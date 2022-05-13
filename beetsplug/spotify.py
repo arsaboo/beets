@@ -581,10 +581,10 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
         no_items = len(items)
         self._log.info('Total {} tracks', no_items)
         audio_features = self.config['audio_features'].get(bool)
-        overwrite_audio_features = \
-            self.config['overwrite_audio_features'].get(bool)
+        audio_features_overwrite = \
+            self.config['audio_features_overwrite'].get(bool)
         popularity = self.config['popularity'].get(bool)
-        overwrite_popularity = self.config['overwrite_popularity'].get(bool)
+        popularity_overwrite = self.config['popularity_overwrite'].get(bool)
         for index, item in enumerate(items, start=1):
             time.sleep(.5)
             self._log.info('Processing {}/{} tracks - {} ',
@@ -596,7 +596,7 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                     spotify_track_popularity = \
                         item.get('spotify_track_popularity', '')
                     self._log.info('Pop only 1')
-                    if (spotify_track_popularity and overwrite_popularity) \
+                    if (spotify_track_popularity and popularity_overwrite) \
                        or not spotify_track_popularity:
                         self._log.info('Pop & overwrite 1')
                         popularity = \
@@ -610,7 +610,7 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                     self._log.info('Audio only 1')
                     if not spotify_track_acousticness \
                        or (spotify_track_acousticness
-                           and overwrite_audio_features):
+                           and audio_features_overwrite):
                         self._log.info('Audio only 2')
                         audio_features = \
                             self.track_audio_features(item.spotify_track_id)
