@@ -595,10 +595,8 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                 if popularity:
                     spotify_track_popularity = \
                         item.get('spotify_track_popularity', '')
-                    self._log.info('Pop only 1')
                     if (spotify_track_popularity and popularity_overwrite) \
                        or not spotify_track_popularity:
-                        self._log.info('Pop & overwrite 1')
                         popularity = \
                             self.track_popularity(item.spotify_track_id)
                         item['spotify_track_popularity'] = popularity
@@ -607,11 +605,9 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                 if audio_features:
                     spotify_track_acousticness = \
                         item.get('spotify_track_acousticness', '')
-                    self._log.info('Audio only 1')
                     if not spotify_track_acousticness \
                        or (spotify_track_acousticness
                            and audio_features_overwrite):
-                        self._log.info('Audio only 2')
                         audio_features = \
                             self.track_audio_features(item.spotify_track_id)
                         for feature in audio_features.keys():
