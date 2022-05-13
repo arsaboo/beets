@@ -210,7 +210,6 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
         tracks = []
         medium_totals = collections.defaultdict(int)
         for i, track_data in enumerate(tracks_items, start=1):
-            self._log.info('Popularity: {}', track_data)
             track = self._get_track(track_data)
             track.index = i
             medium_totals[track.medium] += 1
@@ -248,7 +247,6 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
         :rtype: beets.autotag.hooks.TrackInfo
         """
         artist, artist_id = self.get_artist(track_data['artists'])
-        self._log.info('Popularity2: {}', track_data)
         return TrackInfo(
             title=track_data['name'],
             track_id=track_data['id'],
@@ -582,7 +580,11 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
 
         no_items = len(items)
         self._log.info('Total {} tracks', no_items)
-
+        audio_features = self.config['audio_features'].get(bool)
+        overwrite_audio_features = \
+            self.config['overwrite_audio_features'].get(bool)
+        popularity = self.config['popularity'].get(bool)
+        overwrite_popularity = self.config['overwrite_popularity'].get(bool)
         for index, item in enumerate(items, start=1):
             time.sleep(.5)
             self._log.info('Processing {}/{} tracks - {} ',
@@ -590,22 +592,28 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
             try:
                 # If we're not forcing re-downloading for all tracks, check
                 # whether the popularity data is already present
-                if not force:
+                if popularity:
                     spotify_track_popularity = \
                         item.get('spotify_track_popularity', '')
-                    if spotify_track_popularity:
-                        self._log.debug('Popularity already present for: {}',
-                                        item)
-                        continue
-
-                popularity = self.track_popularity(item.spotify_track_id)
-                item['spotify_track_popularity'] = popularity
-                audio_features = \
-                    self.track_audio_features(item.spotify_track_id)
-                for feature in audio_features.keys():
-                    if feature in spotify_audio_features.keys():
-                        item[spotify_audio_features[feature][0]] = \
-                            audio_features[feature]
+                    if (spotify_track_popularity and overwrite_popularity) \
+                       or not spotify_track_popularity:
+                        popularity = \
+                            self.track_popularity(item.spotify_track_id)
+                        item['spotify_track_popularity'] = popularity
+                # If we're not forcing re-downloading for all tracks, check
+                # whether the acousticness data is already present
+                if audio_features:
+                    spotify_track_acousticness = \
+                        item.get('spotify_track_acousticness', '')
+                    if not spotify_track_acousticness \
+                       or (spotify_track_acousticness
+                           and overwrite_audio_features):
+                        audio_features = \
+                            self.track_audio_features(item.spotify_track_id)
+                        for feature in audio_features.keys():
+                            if feature in spotify_audio_features.keys():
+                                item[spotify_audio_features[feature][0]] = \
+                                    audio_features[feature]
                 item.store()
                 if write:
                     item.try_write()
