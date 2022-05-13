@@ -393,16 +393,10 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
         # spotifysync command
         sync_cmd = ui.Subcommand('spotifysync',
                                  help="fetch track attributes from Spotify")
-        sync_cmd.parser.add_option(
-            '-f', '--force', dest='force_refetch',
-            action='store_true', default=False,
-            help='re-download data when already present'
-        )
 
         def func(lib, opts, args):
             items = lib.items(ui.decargs(args))
-            self._fetch_info(items, ui.should_write(),
-                             opts.force_refetch or self.config['force'])
+            self._fetch_info(items, ui.should_write())
 
         sync_cmd.func = func
         return [spotify_cmd, sync_cmd]
@@ -560,7 +554,7 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                 f'No {self.data_source} tracks found from beets query'
             )
 
-    def _fetch_info(self, items, write, force):
+    def _fetch_info(self, items, write):
         """Obtain track information from Spotify."""
         spotify_audio_features = {
             'acousticness': ['spotify_track_acousticness'],
