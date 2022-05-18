@@ -20,6 +20,7 @@ Spotify playlist construction.
 import re
 import json
 import base64
+import time
 import webbrowser
 import collections
 
@@ -569,7 +570,6 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
             'time_signature': ['spotify_track_time_sig'],
             'valence': ['spotify_track_valence'],
         }
-        import time
 
         no_items = len(items)
         self._log.info('Total {} tracks', no_items)
