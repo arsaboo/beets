@@ -586,21 +586,16 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
                 # If we're not forcing re-downloading for all tracks, check
                 # whether the popularity data is already present
                 if popularity:
-                    spotify_track_popularity = \
-                        item.get('spotify_track_popularity', '')
-                    if (spotify_track_popularity and popularity_overwrite) \
-                       or not spotify_track_popularity:
+                    if popularity_overwrite or \
+                       not ('spotify_track_popularity' in item):
                         popularity = \
                             self.track_popularity(item.spotify_track_id)
                         item['spotify_track_popularity'] = popularity
                 # If we're not forcing re-downloading for all tracks, check
                 # whether the acousticness data is already present
                 if audio_features:
-                    spotify_track_acousticness = \
-                        item.get('spotify_track_acousticness', '')
-                    if not spotify_track_acousticness \
-                       or (spotify_track_acousticness
-                           and audio_features_overwrite):
+                    if not ('spotify_track_acousticness' in item) \
+                       or audio_features_overwrite:
                         audio_features = \
                             self.track_audio_features(item.spotify_track_id)
                         for feature in audio_features.keys():
@@ -620,13 +615,11 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
             requests.get, self.track_url + track_id
         )
         self._log.debug('track_data: {}', track_data['popularity'])
-        track_popularity = track_data['popularity']
-        return track_popularity
+        return track_data['popularity']
 
     def track_audio_features(self, track_id=None):
         """Fetch track audio features by its Spotify ID."""
         track_data = self._handle_response(
             requests.get, self.audio_features_url + track_id
         )
-        audio_features = track_data
-        return audio_features
+        return track_data
