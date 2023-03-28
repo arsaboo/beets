@@ -126,7 +126,6 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     try:
                         with open('temp.jpg', 'wb') as f:
                             f.write(response.content)
-                        print(bytestring_path('temp.jpg'))
                     except OSError as exc:
                         raise util.FilesystemError(exc, 'write',
                                                    bytestring_path('temp.jpg'),
