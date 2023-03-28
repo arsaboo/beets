@@ -119,6 +119,7 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                 except requests.exceptions.RequestException as e:
                     self._log.error("Error: {}".format(e))
                 try:
+                    print(response.content)
                     img = Image.open(BytesIO(response.content))
                 except OSError as e:
                     self._log.error("Error: {}".format(e))
