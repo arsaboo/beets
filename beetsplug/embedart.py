@@ -114,7 +114,7 @@ class EmbedCoverArtPlugin(BeetsPlugin):
             elif opts.url:
                 from PIL import Image
                 try:
-                    response = requests.get(opts.url, timeout=5)
+                    response = requests.get(opts.url)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as e:
                     self._log.error("Error: {}".format(e))
