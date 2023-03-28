@@ -15,6 +15,7 @@
 """Allows beets to embed album art into file metadata."""
 
 import os.path
+import traceback
 from io import BytesIO
 
 import requests
@@ -125,8 +126,11 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     try:
                         with open('temp.jpg', 'wb') as f:
                             f.write(response.content)
-                    except util.FilesystemError as exc:
-                        self._log.error('Error writing file: {}', exc)
+                        print(bytestring_path('temp.jpg'))
+                    except OSError as exc:
+                        raise util.FilesystemError(exc, 'write',
+                                                   bytestring_path('temp.jpg'),
+                                                   traceback.format_exc())
                     opts.file = 'temp.jpg'
                     items = lib.items(decargs(args))
                     # Confirm with user.
