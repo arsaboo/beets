@@ -126,16 +126,16 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     return
                 if img.format:
                     img.save('temp.jpg', format='JPEG')
-                    opts.file = 'temp.jpg'
+                    tempimg = 'temp.jpg'
                     items = lib.items(decargs(args))
                     # Confirm with user.
                     if not opts.yes and not _confirm(items, not opts.url):
                         return
                     for item in items:
-                        art.embed_item(self._log, item, opts.file, maxwidth,
+                        art.embed_item(self._log, item, tempimg, maxwidth,
                                        None, compare_threshold, ifempty,
                                        quality=quality)
-                    os.remove(opts.file)
+                    os.remove(tempimg)
                 else:
                     self._log.error('Invalid image file')
                     return
