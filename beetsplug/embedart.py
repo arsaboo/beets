@@ -118,18 +118,14 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     response.raise_for_status()
                 except requests.exceptions.RequestException as e:
                     self._log.error("Error: {}".format(e))
+                    return
                 try:
                     img = Image.open(BytesIO(response.content))
                 except OSError as e:
                     self._log.error("Error: {}".format(e))
+                    return
                 if img.format:
-                    try:
-                        with open('temp.jpg', 'wb') as f:
-                            f.write(response.content)
-                    except OSError as exc:
-                        raise util.FilesystemError(exc, 'write',
-                                                   bytestring_path('temp.jpg'),
-                                                   traceback.format_exc())
+                    img.save('temp.jpg', format='JPEG')
                     opts.file = 'temp.jpg'
                     items = lib.items(decargs(args))
                     # Confirm with user.
