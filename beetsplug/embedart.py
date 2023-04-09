@@ -126,6 +126,8 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     return
                 if img.format:
                     img.save('temp.jpg', format='JPEG')
+                    full_path = os.path.join(os.getcwd(), 'temp.jpg')
+                    print(full_path)
                     tempimg = 'temp.jpg'
                     items = lib.items(decargs(args))
                     # Confirm with user.
