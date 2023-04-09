@@ -125,7 +125,7 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                     self._log.error("Error: {}".format(e))
                     return
                 if img.format:
-                    tempimg = os.path.join(os.environ['BEETSDIR'], 'temp.png')
+                    tempimg = os.path.join(os.path.expanduser('~'), 'temp.png')
                     try:
                         img.save(tempimg, format='PNG')
                         self._log.error(tempimg)
