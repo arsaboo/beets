@@ -15,12 +15,12 @@
 """Allows beets to embed album art into file metadata."""
 
 import os.path
-import traceback
-from io import BytesIO
+import tempfile
+from mimetypes import guess_extension
 
 import requests
 
-from beets import art, config, ui, util
+from beets import art, config, ui
 from beets.plugins import BeetsPlugin
 from beets.ui import decargs, print_
 from beets.util import bytestring_path, displayable_path, normpath, syspath
@@ -112,7 +112,6 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                                    None, compare_threshold, ifempty,
                                    quality=quality)
             elif opts.url:
-                from mimetypes import guess_extension
                 try:
                     response = requests.get(opts.url, timeout=5)
                     response.raise_for_status()
@@ -124,8 +123,8 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                 if extension is None:
                     self._log.error('Invalid image file')
                     return
-                tempimg = f'image{extension}'
-                self._log.error(tempimg)
+                file = f'image{extension}'
+                tempimg = os.path.join(tempfile.gettempdir(), file)
                 try:
                     with open(tempimg, 'wb') as f:
                         f.write(response.content)
@@ -135,11 +134,12 @@ class EmbedCoverArtPlugin(BeetsPlugin):
                 items = lib.items(decargs(args))
                 # Confirm with user.
                 if not opts.yes and not _confirm(items, not opts.url):
+                    os.remove(tempimg)
                     return
                 for item in items:
                     art.embed_item(self._log, item, tempimg, maxwidth,
-                                    None, compare_threshold, ifempty,
-                                    quality=quality)
+                                   None, compare_threshold, ifempty,
+                                   quality=quality)
                 os.remove(tempimg)
             else:
                 albums = lib.albums(decargs(args))
