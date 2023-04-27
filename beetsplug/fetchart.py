@@ -901,9 +901,9 @@ class Spotify(RemoteArtSource):
     SPOTIFY_ALBUM_URL = 'https://open.spotify.com/album/'
 
     def get(self, album, plugin, paths):
-        if not album.spotify_album_id:
+        if not len(album.album_id) == 22:
             return
-        URL = self.SPOTIFY_ALBUM_URL + album.spotify_album_id
+        URL = self.SPOTIFY_ALBUM_URL + album.album_id
         try:
             response = requests.get(URL)
         except requests.RequestException:
