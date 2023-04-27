@@ -902,9 +902,9 @@ class Spotify(RemoteArtSource):
 
     def get(self, album, plugin, paths):
         print(album.mb_albumid)
-        if not len(album.spotify_album_id) == 22:
+        if not len(album.mb_albumid) == 22:
             return
-        URL = self.SPOTIFY_ALBUM_URL + album.album_id
+        URL = self.SPOTIFY_ALBUM_URL + album.mb_albumid
         try:
             response = requests.get(URL)
         except requests.RequestException:
@@ -916,6 +916,7 @@ class Spotify(RemoteArtSource):
             soup = BeautifulSoup(html, 'html.parser')
             image_url = soup.find('meta',
                                   attrs={'property': 'og:image'})['content']
+            print(image_url)
             yield self._candidate(url=image_url,
                                   match=Candidate.MATCH_EXACT)
         except ValueError:
