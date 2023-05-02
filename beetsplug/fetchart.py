@@ -959,7 +959,8 @@ class Spotify(RemoteArtSource):
     def get(self, album, plugin, paths):
         try:
             album_id = album.items().get().spotify_album_id
-            print("Album ID: " + album_id + "\n")
+            self._log.debug('Spotify album_id {0} found for album {1}',
+                            album_id, album)
         except (AttributeError, ValueError):
             self._log.debug('Spotify album_id not found for {0}', album)
             return
