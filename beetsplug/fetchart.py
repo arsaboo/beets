@@ -957,7 +957,13 @@ class Spotify(RemoteArtSource):
         return HAS_BEAUTIFUL_SOUP
 
     def get(self, album, plugin, paths):
-        url = self.SPOTIFY_ALBUM_URL + album.mb_albumid
+        try:
+            album_id = album.items().get().spotify_album_id
+            print("Album ID: " + album_id + "\n")
+        except (AttributeError, ValueError):
+            self._log.debug('Spotify album_id not found for {0}', album)
+            return
+        url = self.SPOTIFY_ALBUM_URL + album_id
         try:
             response = requests.get(url)
             response.raise_for_status()
