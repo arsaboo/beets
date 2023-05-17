@@ -240,7 +240,7 @@ class LastGenrePlugin(plugins.BeetsPlugin):
         tags_lastfm = self._tags_for(lastfm_obj, min_weight)
         print(f"tags_lastfm: {tags_lastfm}")
         print(f"lastfm obj: {lastfm_obj}")
-        tags_rym = self._tags_for_rym(lastfm_obj)
+        tags_rym = self._tags_rym(lastfm_obj)
         print(f"tags_rym: {tags_rym}")
         return self._resolve_genres(tags_lastfm)
 
