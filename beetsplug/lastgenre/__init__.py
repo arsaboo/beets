@@ -237,7 +237,12 @@ class LastGenrePlugin(plugins.BeetsPlugin):
         can be found. Ex. 'Electronic, House, Dance'
         """
         min_weight = self.config['min_weight'].get(int)
-        return self._resolve_genres(self._tags_for(lastfm_obj, min_weight))
+        tags_lastfm = self._tags_for(lastfm_obj, min_weight)
+        print(f"tags_lastfm: {tags_lastfm}")
+        print(f"lastfm obj: {lastfm_obj}")
+        tags_rym = self._tags_for_rym(lastfm_obj)
+        print(f"tags_rym: {tags_rym}")
+        return self._resolve_genres(tags_lastfm)
 
     def _is_allowed(self, genre):
         """Determine whether the genre is present in the whitelist,
@@ -484,3 +489,12 @@ class LastGenrePlugin(plugins.BeetsPlugin):
         res = [el.item.get_name().lower() for el in res]
 
         return res
+    
+    def _tags_rym(self, obj):
+        from rymscraper import rymscraper
+        album_info = rymscraper.get_album_info(f"{obj.artist} - {obj.album}")
+        if album_info:
+            print(f'RYM: {album_info}')
+            return album_info['genres']
+        else:
+            return []
