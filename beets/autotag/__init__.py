@@ -180,6 +180,7 @@ def apply_metadata(album_info: AlbumInfo, mapping: Mapping[Item, TrackInfo]):
                   ('mb_albumartistid', album_info.artist_id),
                   ('mb_releasegroupid', track_info.artist_id)]
         for field, value in fields:
+            print(field, value)
             if re.match(MBID_REGEX, value) or item.get(field) is None:
                 item[field] = value
         # Compilation flag.
