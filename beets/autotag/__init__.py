@@ -182,7 +182,7 @@ def apply_metadata(album_info: AlbumInfo, mapping: Mapping[Item, TrackInfo]):
         for field, value in fields:
             if re.match(MBID_REGEX, str(value)) or item.get(field) is None:
                 item[field] = value
-                log.debug('Set %s = %s', field, value)
+                log.debug(f'Set {field} to {value}')
         if re.match(MBID_REGEX, str(track_info.artist_id)):
             item.mb_artistid = track_info.artist_id
         elif re.match(MBID_REGEX, str(album_info.artist_id)):
