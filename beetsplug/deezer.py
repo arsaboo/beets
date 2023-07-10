@@ -77,18 +77,15 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
             return None
 
         album_data = requests.get(self.album_url + deezer_id).json()
-        print(album_data)
         if 'error' in album_data:
-            self._log.debug(
-                "Error fetching album from Deezer: %s", album_data['error']
-            )
+            self._log.debug(f"Error fetching album {deezer_id}: \
+                            {album_data['error']}")
             return None
         contributors = album_data.get('contributors')
         if contributors is not None:
             artist, artist_id = self.get_artist(contributors)
         else:
             artist, artist_id = None, None
-
 
         release_date = album_data['release_date']
         date_parts = [int(part) for part in release_date.split('-')]
