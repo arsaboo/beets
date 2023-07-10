@@ -16,6 +16,7 @@
 """
 
 import collections
+import re
 import time
 
 import requests
@@ -72,11 +73,16 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         :rtype: beets.autotag.hooks.AlbumInfo or None
         """
         deezer_id = self._get_id('album', album_id, self.id_regex)
-        if deezer_id is None or not self.id_regex.match(deezer_id):
-            self._log.debug("Invalid Deezer ID found: %s", deezer_id)
+        if deezer_id is None:
             return None
 
         album_data = requests.get(self.album_url + deezer_id).json()
+        print(album_data)
+        if 'error' in album_data:
+            self._log.debug(
+                "Error fetching album from Deezer: %s", album_data['error']
+            )
+            return None
         contributors = album_data.get('contributors')
         if contributors is not None:
             artist, artist_id = self.get_artist(contributors)
