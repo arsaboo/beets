@@ -79,7 +79,7 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         album_data = requests.get(self.album_url + deezer_id).json()
         if 'error' in album_data:
             self._log.debug(f"Error fetching album {deezer_id}: \
-                            {album_data['error']}")
+                            {album_data['error']['message']}")
             return None
         contributors = album_data.get('contributors')
         if contributors is not None:
