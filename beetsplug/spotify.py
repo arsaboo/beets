@@ -242,6 +242,7 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
         album_data = self._handle_response(
             requests.get, self.album_url + spotify_id
         )
+        self._log.debug("album_data: {}", album_data)
         if album_data["name"] == "":
             self._log.debug("Album removed from Spotify: {}", album_id)
             return None
@@ -338,7 +339,7 @@ class SpotifyPlugin(MetadataSourcePlugin, BeetsPlugin):
             medium_index=track_data["track_number"],
             data_source=self.data_source,
             data_url=track_data["external_urls"]["spotify"],
-            isrc=track_data["external_ids"].get("isrc"),
+            # isrc=track_data["external_ids"].get("isrc"),
         )
 
     def track_for_id(self, track_id=None, track_data=None):
