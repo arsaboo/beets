@@ -2,6 +2,7 @@ from beets import config, ui, plugins, autotag
 from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.util import displayable_path
+from beets.autotag import hooks
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -87,32 +88,12 @@ class MetaImportPlugin(BeetsPlugin):
     def _import_albums_metadata(self, albums):
         """Import metadata for albums from all configured sources."""
         for (albumartist, album_name), items in albums.items():
-            # Start prompt with U+279C: Heavy Round-Tipped Rightwards Arrow
-            print_(colorize('action', '\u279c ') + colorize('text', f'Processing album: {albumartist} - {album_name}'))
+            # Use beets' autotagger to get album info
+            artist, album, prop = autotag.tag_album(items)
 
-            # Collect metadata from all sources
-            album_infos = []
-            for source in self.sources:
-                try:
-                    plugin = self.source_plugins[source]
-                    # Search for the album using plugin's search capabilities
-                    results = plugin._search_api('album', keywords=album_name,
-                                              filters={'artist': albumartist})
-                    if results:
-                        # Get the first result's ID and fetch full album info
-                        album_id = results[0]['id']
-                        album_info = plugin.album_for_id(album_id)
-                        if album_info:
-                            album_infos.append(album_info)
-                            self._log.debug('Found metadata from {}', source)
-                except Exception as e:
-                    self._log.warning('Error getting metadata from {}: {}',
-                                    source, str(e))
-
-            if album_infos:
-                # Show the first album info (highest priority source)
-                album_info = album_infos[0]
-                self._show_album_info(album_info)
+            if prop.candidates:
+                # Show the candidates using beets' standard format
+                self._show_candidates(items, artist, album, prop.candidates)
 
                 # Get user choice
                 choice = ui.input_options(
@@ -122,7 +103,8 @@ class MetaImportPlugin(BeetsPlugin):
                 )
 
                 if choice == 'a':  # Apply
-                    self._apply_metadata(items, album_info)
+                    match = prop.candidates[0]
+                    self._apply_candidate(items, match)
                 elif choice == 'b':  # Abort
                     return
                 else:  # Skip
@@ -130,75 +112,49 @@ class MetaImportPlugin(BeetsPlugin):
             else:
                 self._log.info('No metadata found for album: {} - {}', albumartist, album_name)
 
-    def _show_album_info(self, album_info):
-        """Display album metadata."""
+    def _show_candidates(self, items, artist, album, candidates):
+        """Show metadata matches using beets' standard format."""
         print_()
+        print_(colorize('text_highlight', 'Finding tags for album:'))
+        print_(colorize('text', '  {0} - {1}'.format(artist, album)))
+        print_(colorize('text', '  {0} tracks'.format(len(items))))
+        print_()
+
+        # Show best match
+        match = candidates[0]
         print_(colorize('text_highlight', 'Album Info:'))
         print_(colorize('text', '=' * 80))
-        print_(colorize('text', f'Album: {album_info.album}'))
-        print_(colorize('text', f'Artist: {album_info.artist}'))
-        if album_info.year:
-            print_(colorize('text', f'Year: {album_info.year}'))
-        if album_info.label:
-            print_(colorize('text', f'Label: {album_info.label}'))
-
+        print_(colorize('text', 'Album: {0}'.format(match.info.album)))
+        print_(colorize('text', 'Artist: {0}'.format(match.info.artist)))
+        if match.info.year:
+            print_(colorize('text', 'Year: {0}'.format(match.info.year)))
+        if match.info.label:
+            print_(colorize('text', 'Label: {0}'.format(match.info.label)))
         print_()
         print_(colorize('text_highlight', 'Tracks:'))
-        for track in album_info.tracks:
-            print_(colorize('text', f'  {track.index}. {track.title} - {track.artist}'))
+        for track_info in match.info.tracks:
+            print_(colorize('text', '  {0}. {1} - {2}'.format(
+                track_info.index, track_info.title, track_info.artist
+            )))
 
-    def _apply_metadata(self, items, album_info):
-        """Apply metadata from album info to items."""
-        exclude_fields = self.config['exclude_fields'].as_str_seq()
-
+    def _apply_candidate(self, items, match):
+        """Apply metadata from the selected match."""
         print_()
         print_(colorize('text_highlight', 'Applying metadata changes:'))
         print_(colorize('text', '=' * 80))
 
+        # Apply metadata using beets' autotagger
+        autotag.apply_metadata(match.info, match.mapping)
+
+        # Show changes and save
         for item in items:
-            # Find matching track info
-            track_info = None
-            for track in album_info.tracks:
-                if track.index == item.track:
-                    track_info = track
-                    break
+            print_()
+            print_(colorize('text', f'Track: {item.title}'))
+            print_(colorize('text', f'Path: {displayable_path(item.path)}'))
 
-            if track_info:
-                changes = {}
-                # Apply album-level metadata
-                for field in ['album', 'albumartist', 'year', 'month', 'day', 'label']:
-                    if hasattr(album_info, field) and field not in exclude_fields:
-                        value = getattr(album_info, field)
-                        if value and value != getattr(item, field):
-                            changes[field] = value
-
-                # Apply track-level metadata
-                for field in ['title', 'artist', 'length', 'medium', 'medium_index']:
-                    if hasattr(track_info, field) and field not in exclude_fields:
-                        value = getattr(track_info, field)
-                        if value and value != getattr(item, field):
-                            changes[field] = value
-
-                if changes:
-                    # Show changes
-                    print_()
-                    print_(colorize('text', f'Track: {item.title}'))
-                    print_(colorize('text', f'Path: {displayable_path(item.path)}'))
-                    for field, value in changes.items():
-                        old_value = getattr(item, field)
-                        old_str = colorize('text_error', str(old_value))
-                        new_str = colorize('text_highlight', str(value))
-                        print_(colorize('text', f'  {field}: {old_str} -> {new_str}'))
-
-                    # Apply changes
-                    for field, value in changes.items():
-                        setattr(item, field, value)
-                    item.store()
-
-                    try:
-                        item.write()
-                        print_(colorize('text_success', '  Success!'))
-                    except Exception as e:
-                        print_(colorize('text_error', f'  Error: {str(e)}'))
-            else:
-                self._log.warning('No matching track info found for: {}', item.title)
+            try:
+                item.store()
+                item.write()
+                print_(colorize('text_success', '  Success!'))
+            except Exception as e:
+                print_(colorize('text_error', f'  Error: {str(e)}'))
