@@ -1,6 +1,6 @@
 from beets import config, ui, plugins, autotag
 from beets.plugins import BeetsPlugin
-from beets.ui import print_
+from beets.ui import print_, colorize
 from beets.util import displayable_path
 
 # Import supported plugins directly
@@ -87,7 +87,8 @@ class MetaImportPlugin(BeetsPlugin):
     def _import_albums_metadata(self, albums):
         """Import metadata for albums from all configured sources."""
         for (albumartist, album_name), items in albums.items():
-            self._log.info('Processing album: {} - {}', albumartist, album_name)
+            # Start prompt with U+279C: Heavy Round-Tipped Rightwards Arrow
+            print_(colorize('action', '\u279c ') + colorize('text', f'Processing album: {albumartist} - {album_name}'))
 
             # Collect metadata from all sources
             album_infos = []
@@ -114,33 +115,45 @@ class MetaImportPlugin(BeetsPlugin):
                 self._show_album_info(album_info)
 
                 # Get user choice
-                if ui.input_yn('Apply this metadata?'):
+                choice = ui.input_options(
+                    ('Apply', 'Skip', 'aBort'),
+                    default='a',
+                    require=True
+                )
+
+                if choice == 'a':  # Apply
                     self._apply_metadata(items, album_info)
-                else:
+                elif choice == 'b':  # Abort
+                    return
+                else:  # Skip
                     self._log.info('Skipped album: {} - {}', albumartist, album_name)
             else:
                 self._log.info('No metadata found for album: {} - {}', albumartist, album_name)
 
     def _show_album_info(self, album_info):
         """Display album metadata."""
-        print_('\nAlbum Info:')
-        print_('=' * 80)
-        print_(f'Album: {album_info.album}')
-        print_(f'Artist: {album_info.artist}')
+        print_()
+        print_(colorize('text_highlight', 'Album Info:'))
+        print_(colorize('text', '=' * 80))
+        print_(colorize('text', f'Album: {album_info.album}'))
+        print_(colorize('text', f'Artist: {album_info.artist}'))
         if album_info.year:
-            print_(f'Year: {album_info.year}')
+            print_(colorize('text', f'Year: {album_info.year}'))
         if album_info.label:
-            print_(f'Label: {album_info.label}')
-        print_('\nTracks:')
+            print_(colorize('text', f'Label: {album_info.label}'))
+
+        print_()
+        print_(colorize('text_highlight', 'Tracks:'))
         for track in album_info.tracks:
-            print_(f'  {track.index}. {track.title} - {track.artist}')
+            print_(colorize('text', f'  {track.index}. {track.title} - {track.artist}'))
 
     def _apply_metadata(self, items, album_info):
         """Apply metadata from album info to items."""
         exclude_fields = self.config['exclude_fields'].as_str_seq()
 
-        print_('\nApplying metadata changes:')
-        print_('=' * 80)
+        print_()
+        print_(colorize('text_highlight', 'Applying metadata changes:'))
+        print_(colorize('text', '=' * 80))
 
         for item in items:
             # Find matching track info
@@ -168,10 +181,14 @@ class MetaImportPlugin(BeetsPlugin):
 
                 if changes:
                     # Show changes
-                    print_(f'\nTrack: {item.title}')
-                    print_(f'Path: {displayable_path(item.path)}')
+                    print_()
+                    print_(colorize('text', f'Track: {item.title}'))
+                    print_(colorize('text', f'Path: {displayable_path(item.path)}'))
                     for field, value in changes.items():
-                        print_(f'  {field}: {getattr(item, field)} -> {value}')
+                        old_value = getattr(item, field)
+                        old_str = colorize('text_error', str(old_value))
+                        new_str = colorize('text_highlight', str(value))
+                        print_(colorize('text', f'  {field}: {old_str} -> {new_str}'))
 
                     # Apply changes
                     for field, value in changes.items():
@@ -180,8 +197,8 @@ class MetaImportPlugin(BeetsPlugin):
 
                     try:
                         item.write()
-                        print_('  Success!')
+                        print_(colorize('text_success', '  Success!'))
                     except Exception as e:
-                        print_(f'  Error: {str(e)}')
+                        print_(colorize('text_error', f'  Error: {str(e)}'))
             else:
                 self._log.warning('No matching track info found for: {}', item.title)
