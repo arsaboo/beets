@@ -31,16 +31,18 @@ class MetaImportPlugin(BeetsPlugin):
     def _init_source(self, source):
         """Initialize a single source plugin."""
         try:
-            # Get the plugin instance from beets' plugin system
-            plugin = plugins.find_plugins([source])[0]
-
-            # Verify it's a metadata source plugin
-            if isinstance(plugin, plugins.MetadataSourcePlugin):
-                self.source_plugins[source] = plugin
-                self.sources.append(source)
-                self._log.debug(f'Successfully loaded source plugin: {source}')
-            else:
-                self._log.warning(f'Plugin {source} is not a metadata source plugin')
+            # Get the plugin class
+            plugin_class = plugins.find_plugin_class(source)
+            if plugin_class:
+                # Instantiate the plugin
+                plugin = plugin_class()
+                # Verify it's a metadata source plugin
+                if isinstance(plugin, plugins.MetadataSourcePlugin):
+                    self.source_plugins[source] = plugin
+                    self.sources.append(source)
+                    self._log.debug(f'Successfully loaded source plugin: {source}')
+                else:
+                    self._log.warning(f'Plugin {source} is not a metadata source plugin')
         except Exception as e:
             self._log.warning(f'Failed to initialize source {source}: {str(e)}')
 
@@ -83,11 +85,15 @@ class MetaImportPlugin(BeetsPlugin):
             for source in self.sources:
                 try:
                     plugin = self.source_plugins[source]
-                    # Search for the album
+                    # Search for the album using plugin's search capabilities
                     query = f"album:{album_name} artist:{albumartist}"
-                    albums = plugin.album_for_id(query)
-                    if albums:
-                        candidates.append(albums)
+                    results = plugin._search_api('album', keywords=query)
+                    if results:
+                        # Get the first result's ID and fetch full album info
+                        album_id = results[0]['id']
+                        album_info = plugin.album_for_id(album_id)
+                        if album_info:
+                            candidates.append(album_info)
                 except Exception as e:
                     self._log.warning('Error getting metadata from {}: {}',
                                     source, str(e))
