@@ -4,7 +4,17 @@ from beets.ui import print_
 from beets.util import displayable_path
 from beets.autotag import hooks
 
+# Import supported plugins directly
+from beetsplug.spotify import SpotifyPlugin
+from beetsplug.deezer import DeezerPlugin
+
 class MetaImportPlugin(BeetsPlugin):
+    # Map of supported source names to their plugin classes
+    SUPPORTED_SOURCES = {
+        'spotify': SpotifyPlugin,
+        'deezer': DeezerPlugin
+    }
+
     def __init__(self):
         super().__init__()
 
@@ -24,6 +34,9 @@ class MetaImportPlugin(BeetsPlugin):
             if configured_sources:
                 self._log.debug(f'Configured sources: {configured_sources}')
                 for source in configured_sources:
+                    if source not in self.SUPPORTED_SOURCES:
+                        self._log.warning(f'Unsupported source: {source}')
+                        continue
                     self._init_source(source)
             else:
                 self._log.debug('No sources configured in metaimport.sources')
@@ -31,18 +44,13 @@ class MetaImportPlugin(BeetsPlugin):
     def _init_source(self, source):
         """Initialize a single source plugin."""
         try:
-            # Get the plugin class
-            plugin_class = plugins.find_plugin_class(source)
-            if plugin_class:
-                # Instantiate the plugin
-                plugin = plugin_class()
-                # Verify it's a metadata source plugin
-                if isinstance(plugin, plugins.MetadataSourcePlugin):
-                    self.source_plugins[source] = plugin
-                    self.sources.append(source)
-                    self._log.debug(f'Successfully loaded source plugin: {source}')
-                else:
-                    self._log.warning(f'Plugin {source} is not a metadata source plugin')
+            # Get the plugin class from our supported sources
+            plugin_class = self.SUPPORTED_SOURCES[source]
+            # Instantiate the plugin
+            plugin = plugin_class()
+            self.source_plugins[source] = plugin
+            self.sources.append(source)
+            self._log.debug(f'Successfully loaded source plugin: {source}')
         except Exception as e:
             self._log.warning(f'Failed to initialize source {source}: {str(e)}')
 
@@ -57,7 +65,9 @@ class MetaImportPlugin(BeetsPlugin):
     def _command(self, lib, opts, args):
         """Main command implementation."""
         if not self.sources:
-            self._log.warning('No valid metadata sources configured')
+            self._log.warning('No valid metadata sources configured. Supported sources: {}'.format(
+                ', '.join(self.SUPPORTED_SOURCES.keys())
+            ))
             return
 
         items = lib.items(ui.decargs(args))
@@ -86,14 +96,15 @@ class MetaImportPlugin(BeetsPlugin):
                 try:
                     plugin = self.source_plugins[source]
                     # Search for the album using plugin's search capabilities
-                    query = f"album:{album_name} artist:{albumartist}"
-                    results = plugin._search_api('album', keywords=query)
+                    results = plugin._search_api('album', keywords=album_name,
+                                              filters={'artist': albumartist})
                     if results:
                         # Get the first result's ID and fetch full album info
                         album_id = results[0]['id']
                         album_info = plugin.album_for_id(album_id)
                         if album_info:
                             candidates.append(album_info)
+                            self._log.debug('Found metadata from {}', source)
                 except Exception as e:
                     self._log.warning('Error getting metadata from {}: {}',
                                     source, str(e))
