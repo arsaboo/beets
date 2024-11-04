@@ -1,8 +1,7 @@
-from beets import config, ui, plugins
+from beets import config, ui, plugins, autotag
 from beets.plugins import BeetsPlugin
 from beets.ui import print_
 from beets.util import displayable_path
-from beets.autotag import hooks
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -91,7 +90,7 @@ class MetaImportPlugin(BeetsPlugin):
             self._log.info('Processing album: {} - {}', albumartist, album_name)
 
             # Collect metadata from all sources
-            candidates = []
+            album_infos = []
             for source in self.sources:
                 try:
                     plugin = self.source_plugins[source]
@@ -103,30 +102,38 @@ class MetaImportPlugin(BeetsPlugin):
                         album_id = results[0]['id']
                         album_info = plugin.album_for_id(album_id)
                         if album_info:
-                            candidates.append(album_info)
+                            album_infos.append(album_info)
                             self._log.debug('Found metadata from {}', source)
                 except Exception as e:
                     self._log.warning('Error getting metadata from {}: {}',
                                     source, str(e))
 
-            if candidates:
-                # Create a match proposal using beets' built-in functionality
-                proposal = hooks.Proposal(candidates, hooks.Recommendation.STRONG)
-                proposal.show()
+            if album_infos:
+                # Show the first album info (highest priority source)
+                album_info = album_infos[0]
+                self._show_album_info(album_info)
 
-                # Get user choice using beets' standard interface
-                sel = ui.input_options(
-                    ('Apply', 'More', 'Skip', 'Use as-is', 'as Tracks', 'Group albums'),
-                    'Enter search, enter Id, Apply, More, Skip, Use as-is, '
-                    'as Tracks, Group albums?'
-                )
-
-                if sel == 'a':
-                    self._apply_metadata(items, candidates[0])
-                elif sel == 's':
+                # Get user choice
+                if ui.input_yn('Apply this metadata?'):
+                    self._apply_metadata(items, album_info)
+                else:
                     self._log.info('Skipped album: {} - {}', albumartist, album_name)
             else:
                 self._log.info('No metadata found for album: {} - {}', albumartist, album_name)
+
+    def _show_album_info(self, album_info):
+        """Display album metadata."""
+        print_('\nAlbum Info:')
+        print_('=' * 80)
+        print_(f'Album: {album_info.album}')
+        print_(f'Artist: {album_info.artist}')
+        if album_info.year:
+            print_(f'Year: {album_info.year}')
+        if album_info.label:
+            print_(f'Label: {album_info.label}')
+        print_('\nTracks:')
+        for track in album_info.tracks:
+            print_(f'  {track.index}. {track.title} - {track.artist}')
 
     def _apply_metadata(self, items, album_info):
         """Apply metadata from album info to items."""
