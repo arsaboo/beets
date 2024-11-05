@@ -41,6 +41,9 @@ class MetaImportPlugin(BeetsPlugin):
             else:
                 self._log.debug('No sources configured in metaimport.sources')
 
+        # Register as a metadata provider
+        self.register_listener('album_candidates', self.candidates)
+
     def _init_source(self, source):
         """Initialize a single source plugin."""
         try:
@@ -83,126 +86,37 @@ class MetaImportPlugin(BeetsPlugin):
                 albums[key] = []
             albums[key].append(item)
 
-        self._import_albums_metadata(albums)
-
-    def _import_albums_metadata(self, albums):
-        """Import metadata for albums from all configured sources."""
+        # Use beets' built-in import process
         for (albumartist, album_name), items in albums.items():
             print_(colorize('text_highlight', '\nProcessing album:'))
             print_(colorize('text', f'  {albumartist} - {album_name}'))
             print_(colorize('text', f'  {len(items)} tracks'))
 
-            # Search using each configured source
-            matches = []
-            for source in self.sources:
-                try:
-                    plugin = self.source_plugins[source]
-                    # Search for the album using plugin's search capabilities
-                    results = plugin._search_api('album', keywords=album_name,
-                                              filters={'artist': albumartist})
-                    if results:
-                        # Get the first result's ID and fetch full album info
-                        album_id = results[0]['id']
+            # Let beets handle the import process
+            # The candidates hook will provide matches from our sources
+            autotag.tag_album(items)
+
+    def candidates(self, items, artist, album, va_likely, extra_tags=None):
+        """Hook for providing metadata matches during import."""
+        matches = []
+        for source in self.sources:
+            try:
+                plugin = self.source_plugins[source]
+                # Search for the album using plugin's search capabilities
+                results = plugin._search_api('album', keywords=album,
+                                          filters={'artist': artist})
+                if results:
+                    for result in results:
+                        # Get album info from the source plugin
+                        album_id = str(result['id'])
                         album_info = plugin.album_for_id(album_id)
                         if album_info:
-                            matches.append((source, album_info))
+                            # The source plugins already return AlbumInfo objects
+                            # Just ensure data_source is set correctly
+                            album_info.data_source = source
+                            matches.append(album_info)
                             self._log.debug('Found metadata from {}', source)
-                except Exception as e:
-                    self._log.warning('Error getting metadata from {}: {}',
-                                    source, str(e))
-
-            if matches:
-                # Show matches from each source
-                print_()
-                for i, (source, album_info) in enumerate(matches, 1):
-                    print_(colorize('text_highlight', f'\nMatch [{i}] from {source}:'))
-                    print_(colorize('text', '=' * 80))
-                    print_(colorize('text', f'Album: {album_info.album}'))
-                    print_(colorize('text', f'Artist: {album_info.artist}'))
-                    if album_info.year:
-                        print_(colorize('text', f'Year: {album_info.year}'))
-                    if album_info.label:
-                        print_(colorize('text', f'Label: {album_info.label}'))
-                    print_()
-                    print_(colorize('text', 'Tracks:'))
-                    for track in album_info.tracks:
-                        print_(colorize('text', f'  {track.index}. {track.title} - {track.artist}'))
-
-                # Let user choose which match to use
-                options = []
-                for i, (source, _) in enumerate(matches, 1):
-                    options.append(f'Use match {i} ({source})')
-                options.extend(['Skip', 'aBort'])
-
-                choice = ui.input_options(
-                    options,
-                    default='s',
-                    require=True
-                )
-
-                if choice == 'b':  # Abort
-                    return
-                elif choice != 's':  # Not skip
-                    match_index = int(choice) - 1
-                    source, album_info = matches[match_index]
-                    self._apply_metadata(items, album_info)
-                else:  # Skip
-                    self._log.info('Skipped album: {} - {}', albumartist, album_name)
-            else:
-                self._log.info('No metadata found for album: {} - {}', albumartist, album_name)
-
-    def _apply_metadata(self, items, album_info):
-        """Apply metadata from the selected match."""
-        exclude_fields = self.config['exclude_fields'].as_str_seq()
-
-        print_()
-        print_(colorize('text_highlight', 'Applying metadata changes:'))
-        print_(colorize('text', '=' * 80))
-
-        for item in items:
-            # Find matching track info
-            track_info = None
-            for track in album_info.tracks:
-                if track.index == item.track:
-                    track_info = track
-                    break
-
-            if track_info:
-                changes = {}
-                # Apply album-level metadata
-                for field in ['album', 'albumartist', 'year', 'month', 'day', 'label']:
-                    if hasattr(album_info, field) and field not in exclude_fields:
-                        value = getattr(album_info, field)
-                        if value and value != getattr(item, field):
-                            changes[field] = value
-
-                # Apply track-level metadata
-                for field in ['title', 'artist', 'length', 'medium', 'medium_index']:
-                    if hasattr(track_info, field) and field not in exclude_fields:
-                        value = getattr(track_info, field)
-                        if value and value != getattr(item, field):
-                            changes[field] = value
-
-                if changes:
-                    # Show changes
-                    print_()
-                    print_(colorize('text', f'Track: {item.title}'))
-                    print_(colorize('text', f'Path: {displayable_path(item.path)}'))
-                    for field, value in changes.items():
-                        old_value = getattr(item, field)
-                        old_str = colorize('text_error', str(old_value))
-                        new_str = colorize('text_highlight', str(value))
-                        print_(colorize('text', f'  {field}: {old_str} -> {new_str}'))
-
-                    # Apply changes
-                    for field, value in changes.items():
-                        setattr(item, field, value)
-                    item.store()
-
-                    try:
-                        item.write()
-                        print_(colorize('text_success', '  Success!'))
-                    except Exception as e:
-                        print_(colorize('text_error', f'  Error: {str(e)}'))
-            else:
-                self._log.warning('No matching track info found for: {}', item.title)
+            except Exception as e:
+                self._log.warning('Error getting metadata from {}: {}',
+                                source, str(e))
+        return matches
