@@ -99,14 +99,48 @@ class MetaImportPlugin(BeetsPlugin):
             # The candidates hook will provide matches from our sources
             autotag.tag_album(items)
 
-    def _clean_string(self, s):
-        """Clean a string for comparison."""
+    def _normalize_string(self, s):
+        """Normalize a string for comparison."""
         if not s:
             return ''
-        # Remove special characters and extra spaces
+        # Convert to lowercase
+        s = s.lower()
+        # Replace special characters with spaces
         s = re.sub(r'[^\w\s]', ' ', s)
-        # Convert to lowercase and normalize whitespace
-        return ' '.join(s.lower().split())
+        # Replace multiple spaces with single space
+        s = re.sub(r'\s+', ' ', s)
+        # Remove common words and punctuation
+        s = re.sub(r'\b(the|a|an|and|or|of|feat|featuring|original|motion|picture|soundtrack|ost)\b', '', s)
+        # Remove parentheses and their contents
+        s = re.sub(r'\([^)]*\)', '', s)
+        # Remove common suffixes
+        s = re.sub(r'(original motion picture soundtrack|ost|soundtrack)$', '', s)
+        # Strip and normalize whitespace
+        return ' '.join(s.split())
+
+    def _strings_match(self, s1, s2, threshold=0.8):
+        """Compare two strings with fuzzy matching."""
+        if not s1 or not s2:
+            return False
+
+        # Normalize strings
+        n1 = self._normalize_string(s1)
+        n2 = self._normalize_string(s2)
+
+        # Check if one is contained in the other
+        if n1 in n2 or n2 in n1:
+            return True
+
+        # Check if they're similar enough
+        words1 = set(n1.split())
+        words2 = set(n2.split())
+        if not words1 or not words2:
+            return False
+
+        common_words = words1.intersection(words2)
+        similarity = len(common_words) / max(len(words1), len(words2))
+
+        return similarity >= threshold
 
     def _albums_match(self, album1, album2):
         """Check if two albums are likely the same based on metadata."""
@@ -115,12 +149,14 @@ class MetaImportPlugin(BeetsPlugin):
             if not (album1 and album2 and album1.tracks and album2.tracks):
                 return False
 
-            # Compare cleaned album and artist names
-            if self._clean_string(album1.album) != self._clean_string(album2.album):
+            # Compare album names with fuzzy matching
+            if not self._strings_match(album1.album, album2.album):
                 self._log.debug(f'Album names do not match: {album1.album} vs {album2.album}')
                 return False
+
+            # Compare artists with fuzzy matching
             if not album1.va and not album2.va:
-                if self._clean_string(album1.artist) != self._clean_string(album2.artist):
+                if not self._strings_match(album1.artist, album2.artist):
                     self._log.debug(f'Artist names do not match: {album1.artist} vs {album2.artist}')
                     return False
 
@@ -240,8 +276,8 @@ class MetaImportPlugin(BeetsPlugin):
             return results
 
         # Try without special characters
-        clean_album = self._clean_string(album)
-        clean_artist = self._clean_string(artist)
+        clean_album = self._normalize_string(album)
+        clean_artist = self._normalize_string(artist)
         results = plugin._search_api('album', keywords=clean_album, filters={'artist': clean_artist})
         if results:
             self._log.debug(f'Found {len(results)} results with cleaned strings')
