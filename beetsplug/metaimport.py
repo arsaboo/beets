@@ -4,6 +4,7 @@ from beets.ui import print_, colorize
 from beets.util import displayable_path
 from beets.autotag import hooks, match
 from collections import defaultdict
+import re
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -23,7 +24,7 @@ class MetaImportPlugin(BeetsPlugin):
         self.config.add({
             'sources': [],  # List of metadata sources in order of preference
             'exclude_fields': [],  # Fields to exclude from metadata import
-            'match_threshold': 0.25,  # Distance threshold for considering albums the same
+            'match_threshold': 0.70,  # Distance threshold for considering albums the same
         })
 
         # Initialize source plugins
@@ -98,9 +99,33 @@ class MetaImportPlugin(BeetsPlugin):
             # The candidates hook will provide matches from our sources
             autotag.tag_album(items)
 
+    def _clean_string(self, s):
+        """Clean a string for comparison."""
+        if not s:
+            return ''
+        # Remove special characters and extra spaces
+        s = re.sub(r'[^\w\s]', ' ', s)
+        # Convert to lowercase and normalize whitespace
+        return ' '.join(s.lower().split())
+
     def _albums_match(self, album1, album2):
         """Check if two albums are likely the same based on metadata."""
         try:
+            # Basic metadata comparison
+            if not (album1 and album2 and album1.tracks and album2.tracks):
+                return False
+
+            # Compare cleaned album and artist names
+            if self._clean_string(album1.album) != self._clean_string(album2.album):
+                return False
+            if not album1.va and not album2.va:
+                if self._clean_string(album1.artist) != self._clean_string(album2.artist):
+                    return False
+
+            # Compare track counts
+            if abs(len(album1.tracks) - len(album2.tracks)) > 2:
+                return False
+
             # Create a mapping between tracks
             mapping, extra_items, extra_tracks = match.assign_items(
                 album1.tracks, album2.tracks
@@ -120,7 +145,13 @@ class MetaImportPlugin(BeetsPlugin):
             return None
 
         try:
-            # Use the first album as base
+            # Sort albums by completeness of metadata
+            def metadata_completeness(album):
+                fields = ['year', 'month', 'day', 'label', 'catalognum',
+                         'country', 'media', 'albumdisambig', 'genre', 'style']
+                return sum(1 for f in fields if getattr(album, f))
+
+            albums.sort(key=metadata_completeness, reverse=True)
             base = albums[0]
 
             # Create a new AlbumInfo object with merged data
@@ -177,6 +208,27 @@ class MetaImportPlugin(BeetsPlugin):
         except Exception:
             return None
 
+    def _search_album(self, source, artist, album):
+        """Search for an album using various search strategies."""
+        plugin = self.source_plugins[source]
+        results = []
+
+        # Try exact search first
+        results = plugin._search_api('album', keywords=album, filters={'artist': artist})
+
+        if not results:
+            # Try without special characters
+            clean_album = self._clean_string(album)
+            clean_artist = self._clean_string(artist)
+            results = plugin._search_api('album', keywords=clean_album, filters={'artist': clean_artist})
+
+        if not results:
+            # Try just the main part of the album name (before any dash)
+            main_album = album.split('-')[0].strip()
+            results = plugin._search_api('album', keywords=main_album, filters={'artist': artist})
+
+        return results
+
     def candidates(self, items, artist, album, va_likely, extra_tags=None):
         """Hook for providing metadata matches during import."""
         # Group matches by album to detect same album across sources
@@ -184,17 +236,15 @@ class MetaImportPlugin(BeetsPlugin):
 
         for source in self.sources:
             try:
-                plugin = self.source_plugins[source]
-                # Search for the album using plugin's search capabilities
-                results = plugin._search_api('album', keywords=album,
-                                          filters={'artist': artist})
+                # Search for the album using various strategies
+                results = self._search_album(source, artist, album)
 
                 if results:
                     for result in results:
                         try:
                             # Get album info from the source plugin
                             album_id = str(result['id'])
-                            album_info = plugin.album_for_id(album_id)
+                            album_info = self.source_plugins[source].album_for_id(album_id)
 
                             if album_info:
                                 # Set the data source
