@@ -221,21 +221,13 @@ class MetaImportPlugin(BeetsPlugin):
                                 source, str(e))
 
         # Merge matches and return candidates
-        matches = []
+        merged_albums = []
         for group in album_groups.values():
             try:
                 merged = self._merge_album_info(group)
                 if merged:
-                    # Create mapping between items and tracks
-                    mapping, extra_items, extra_tracks = match.assign_items(items, merged.tracks)
-
-                    # Calculate distance
-                    dist = match.distance(items, merged, mapping)
-
-                    # Create AlbumMatch object with the merged info
-                    album_match = hooks.AlbumMatch(dist, merged, mapping, extra_items, extra_tracks)
-                    matches.append(album_match)
+                    merged_albums.append(merged)
             except Exception:
                 continue
 
-        return matches
+        return merged_albums
