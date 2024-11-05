@@ -2,7 +2,8 @@ from beets import config, ui, plugins, autotag
 from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.util import displayable_path
-from beets.autotag import hooks
+from beets.autotag import hooks, match
+from collections import defaultdict
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -22,6 +23,7 @@ class MetaImportPlugin(BeetsPlugin):
         self.config.add({
             'sources': [],  # List of metadata sources in order of preference
             'exclude_fields': [],  # Fields to exclude from metadata import
+            'match_threshold': 0.25,  # Distance threshold for considering albums the same
         })
 
         # Initialize source plugins
@@ -96,12 +98,83 @@ class MetaImportPlugin(BeetsPlugin):
             # The candidates hook will provide matches from our sources
             autotag.tag_album(items)
 
+    def _albums_match(self, album1, album2):
+        """Check if two albums are likely the same based on metadata."""
+        # Create a mapping between tracks
+        mapping, extra_items, extra_tracks = match.assign_items(
+            album1.tracks, album2.tracks
+        )
+
+        # Calculate distance between albums
+        dist = match.distance(album1.tracks, album2, mapping)
+
+        # Return True if distance is below threshold
+        return dist.distance <= self.config['match_threshold'].as_number()
+
+    def _merge_album_info(self, albums):
+        """Merge metadata from multiple album matches."""
+        if not albums:
+            return None
+
+        # Use the first album as base
+        base = albums[0]
+
+        # Create a new AlbumInfo object with merged data
+        merged = hooks.AlbumInfo(
+            album=base.album,
+            album_id=base.album_id,
+            artist=base.artist,
+            artist_id=base.artist_id,
+            tracks=base.tracks,
+            asin=base.asin,
+            albumtype=base.albumtype,
+            va=base.va,
+            year=base.year,
+            month=base.month,
+            day=base.day,
+            label=base.label,
+            mediums=base.mediums,
+            artist_sort=base.artist_sort,
+            releasegroup_id=base.releasegroup_id,
+            catalognum=base.catalognum,
+            script=base.script,
+            language=base.language,
+            country=base.country,
+            style=base.style,
+            genre=base.genre,
+            albumstatus=base.albumstatus,
+            media=base.media,
+            albumdisambig=base.albumdisambig,
+            artist_credit=base.artist_credit,
+            data_source=f"merged({','.join(a.data_source for a in albums)})",
+            data_url=base.data_url
+        )
+
+        # Merge additional metadata from other matches
+        for other in albums[1:]:
+            # Fill in missing fields from other sources
+            for field in ['year', 'month', 'day', 'label', 'catalognum',
+                         'country', 'media', 'albumdisambig']:
+                if not getattr(merged, field) and getattr(other, field):
+                    setattr(merged, field, getattr(other, field))
+
+            # Merge genre/style lists if present
+            if other.genre and merged.genre:
+                merged.genre = list(set(merged.genre + other.genre))
+            elif other.genre:
+                merged.genre = other.genre
+
+            if other.style and merged.style:
+                merged.style = list(set(merged.style + other.style))
+            elif other.style:
+                merged.style = other.style
+
+        return merged
+
     def candidates(self, items, artist, album, va_likely, extra_tags=None):
         """Hook for providing metadata matches during import."""
-        matches = []
-
-        # Track which IDs we've already processed to avoid duplicates
-        seen_ids = set()
+        # Group matches by album to detect same album across sources
+        album_groups = defaultdict(list)
 
         for source in self.sources:
             try:
@@ -114,48 +187,41 @@ class MetaImportPlugin(BeetsPlugin):
                     for result in results:
                         # Get album info from the source plugin
                         album_id = str(result['id'])
-
-                        # Skip if we've already processed this ID
-                        if album_id in seen_ids:
-                            continue
-                        seen_ids.add(album_id)
-
                         album_info = plugin.album_for_id(album_id)
+
                         if album_info:
-                            # Create a new hooks.AlbumInfo object with proper source attribution
-                            info = hooks.AlbumInfo(
-                                album=album_info.album,
-                                album_id=album_info.album_id,
-                                artist=album_info.artist,
-                                artist_id=album_info.artist_id,
-                                tracks=album_info.tracks,
-                                asin=album_info.asin,
-                                albumtype=album_info.albumtype,
-                                va=album_info.va,
-                                year=album_info.year,
-                                month=album_info.month,
-                                day=album_info.day,
-                                label=album_info.label,
-                                mediums=album_info.mediums,
-                                artist_sort=album_info.artist_sort,
-                                releasegroup_id=album_info.releasegroup_id,
-                                catalognum=album_info.catalognum,
-                                script=album_info.script,
-                                language=album_info.language,
-                                country=album_info.country,
-                                style=album_info.style,
-                                genre=album_info.genre,
-                                albumstatus=album_info.albumstatus,
-                                media=album_info.media,
-                                albumdisambig=album_info.albumdisambig,
-                                artist_credit=album_info.artist_credit,
-                                data_source=source,
-                                data_url=getattr(album_info, 'data_url', None)
-                            )
-                            matches.append(info)
+                            # Set the data source
+                            album_info.data_source = source
+
+                            # Try to find matching album group
+                            matched = False
+                            for group_id, group in album_groups.items():
+                                if any(self._albums_match(album_info, a) for a in group):
+                                    group.append(album_info)
+                                    matched = True
+                                    break
+
+                            # Create new group if no match found
+                            if not matched:
+                                group_id = f"group_{len(album_groups)}"
+                                album_groups[group_id].append(album_info)
+
                             self._log.debug(f'Found metadata from {source}')
             except Exception as e:
                 self._log.warning('Error getting metadata from {}: {}',
                                 source, str(e))
+
+        # Merge matches and return candidates
+        matches = []
+        for group in album_groups.values():
+            merged = self._merge_album_info(group)
+            if merged:
+                # Create mapping between items and tracks
+                mapping, extra_items, extra_tracks = match.assign_items(items, merged.tracks)
+
+                # Calculate distance
+                dist = match.distance(items, merged, mapping)
+
+                matches.append(hooks.AlbumMatch(dist, merged, mapping, extra_items, extra_tracks))
 
         return matches
