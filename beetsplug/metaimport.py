@@ -99,24 +99,63 @@ class MetaImportPlugin(BeetsPlugin):
     def candidates(self, items, artist, album, va_likely, extra_tags=None):
         """Hook for providing metadata matches during import."""
         matches = []
+
+        # Track which IDs we've already processed to avoid duplicates
+        seen_ids = set()
+
         for source in self.sources:
             try:
                 plugin = self.source_plugins[source]
                 # Search for the album using plugin's search capabilities
                 results = plugin._search_api('album', keywords=album,
                                           filters={'artist': artist})
+
                 if results:
                     for result in results:
                         # Get album info from the source plugin
                         album_id = str(result['id'])
+
+                        # Skip if we've already processed this ID
+                        if album_id in seen_ids:
+                            continue
+                        seen_ids.add(album_id)
+
                         album_info = plugin.album_for_id(album_id)
                         if album_info:
-                            # The source plugins already return AlbumInfo objects
-                            # Just ensure data_source is set correctly
-                            album_info.data_source = source
-                            matches.append(album_info)
-                            self._log.debug('Found metadata from {}', source)
+                            # Create a new hooks.AlbumInfo object with proper source attribution
+                            info = hooks.AlbumInfo(
+                                album=album_info.album,
+                                album_id=album_info.album_id,
+                                artist=album_info.artist,
+                                artist_id=album_info.artist_id,
+                                tracks=album_info.tracks,
+                                asin=album_info.asin,
+                                albumtype=album_info.albumtype,
+                                va=album_info.va,
+                                year=album_info.year,
+                                month=album_info.month,
+                                day=album_info.day,
+                                label=album_info.label,
+                                mediums=album_info.mediums,
+                                artist_sort=album_info.artist_sort,
+                                releasegroup_id=album_info.releasegroup_id,
+                                catalognum=album_info.catalognum,
+                                script=album_info.script,
+                                language=album_info.language,
+                                country=album_info.country,
+                                style=album_info.style,
+                                genre=album_info.genre,
+                                albumstatus=album_info.albumstatus,
+                                media=album_info.media,
+                                albumdisambig=album_info.albumdisambig,
+                                artist_credit=album_info.artist_credit,
+                                data_source=source,
+                                data_url=getattr(album_info, 'data_url', None)
+                            )
+                            matches.append(info)
+                            self._log.debug(f'Found metadata from {source}')
             except Exception as e:
                 self._log.warning('Error getting metadata from {}: {}',
                                 source, str(e))
+
         return matches
