@@ -111,8 +111,7 @@ class MetaImportPlugin(BeetsPlugin):
 
             # Return True if distance is below threshold
             return dist.distance <= self.config['match_threshold'].as_number()
-        except Exception as e:
-            self._log.debug(f'Error comparing albums: {str(e)}')
+        except Exception:
             return False
 
     def _merge_album_info(self, albums):
@@ -175,8 +174,7 @@ class MetaImportPlugin(BeetsPlugin):
                     merged.style = other.style
 
             return merged
-        except Exception as e:
-            self._log.debug(f'Error merging album info: {str(e)}')
+        except Exception:
             return None
 
     def candidates(self, items, artist, album, va_likely, extra_tags=None):
@@ -216,8 +214,7 @@ class MetaImportPlugin(BeetsPlugin):
                                     album_groups[group_id].append(album_info)
 
                                 self._log.debug(f'Found metadata from {source}')
-                        except Exception as e:
-                            self._log.debug(f'Error processing result from {source}: {str(e)}')
+                        except Exception:
                             continue
             except Exception as e:
                 self._log.warning('Error getting metadata from {}: {}',
@@ -235,11 +232,10 @@ class MetaImportPlugin(BeetsPlugin):
                     # Calculate distance
                     dist = match.distance(items, merged, mapping)
 
-                    # Create AlbumMatch object
+                    # Create AlbumMatch object with the merged info
                     album_match = hooks.AlbumMatch(dist, merged, mapping, extra_items, extra_tracks)
                     matches.append(album_match)
-            except Exception as e:
-                self._log.debug(f'Error creating album match: {str(e)}')
+            except Exception:
                 continue
 
         return matches
