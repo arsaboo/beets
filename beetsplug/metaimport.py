@@ -117,13 +117,16 @@ class MetaImportPlugin(BeetsPlugin):
 
             # Compare cleaned album and artist names
             if self._clean_string(album1.album) != self._clean_string(album2.album):
+                self._log.debug(f'Album names do not match: {album1.album} vs {album2.album}')
                 return False
             if not album1.va and not album2.va:
                 if self._clean_string(album1.artist) != self._clean_string(album2.artist):
+                    self._log.debug(f'Artist names do not match: {album1.artist} vs {album2.artist}')
                     return False
 
             # Compare track counts
             if abs(len(album1.tracks) - len(album2.tracks)) > 2:
+                self._log.debug(f'Track count difference too large: {len(album1.tracks)} vs {len(album2.tracks)}')
                 return False
 
             # Create a mapping between tracks
@@ -134,9 +137,13 @@ class MetaImportPlugin(BeetsPlugin):
             # Calculate distance between albums
             dist = match.distance(album1.tracks, album2, mapping)
 
+            # Log the distance
+            self._log.debug(f'Album distance: {dist.distance} (threshold: {self.config["match_threshold"].as_number()})')
+
             # Return True if distance is below threshold
             return dist.distance <= self.config['match_threshold'].as_number()
-        except Exception:
+        except Exception as e:
+            self._log.debug(f'Error comparing albums: {str(e)}')
             return False
 
     def _merge_album_info(self, albums):
@@ -149,10 +156,13 @@ class MetaImportPlugin(BeetsPlugin):
             def metadata_completeness(album):
                 fields = ['year', 'month', 'day', 'label', 'catalognum',
                          'country', 'media', 'albumdisambig', 'genre', 'style']
-                return sum(1 for f in fields if getattr(album, f))
+                completeness = sum(1 for f in fields if getattr(album, f))
+                self._log.debug(f'Metadata completeness for {album.album} ({album.data_source}): {completeness}')
+                return completeness
 
             albums.sort(key=metadata_completeness, reverse=True)
             base = albums[0]
+            self._log.debug(f'Using base album from {base.data_source}: {base.album} by {base.artist}')
 
             # Create a new AlbumInfo object with merged data
             merged = hooks.AlbumInfo(
@@ -187,25 +197,33 @@ class MetaImportPlugin(BeetsPlugin):
 
             # Merge additional metadata from other matches
             for other in albums[1:]:
+                self._log.debug(f'Merging metadata from {other.data_source}')
                 # Fill in missing fields from other sources
                 for field in ['year', 'month', 'day', 'label', 'catalognum',
                              'country', 'media', 'albumdisambig']:
                     if not getattr(merged, field) and getattr(other, field):
+                        self._log.debug(f'Adding {field} from {other.data_source}: {getattr(other, field)}')
                         setattr(merged, field, getattr(other, field))
 
                 # Merge genre/style lists if present
                 if other.genre and merged.genre:
                     merged.genre = list(set(merged.genre + other.genre))
+                    self._log.debug(f'Merged genres: {merged.genre}')
                 elif other.genre:
                     merged.genre = other.genre
+                    self._log.debug(f'Added genres from {other.data_source}: {other.genre}')
 
                 if other.style and merged.style:
                     merged.style = list(set(merged.style + other.style))
+                    self._log.debug(f'Merged styles: {merged.style}')
                 elif other.style:
                     merged.style = other.style
+                    self._log.debug(f'Added styles from {other.data_source}: {other.style}')
 
+            self._log.debug(f'Successfully merged metadata from {len(albums)} sources')
             return merged
-        except Exception:
+        except Exception as e:
+            self._log.debug(f'Error merging album info: {str(e)}')
             return None
 
     def _search_album(self, source, artist, album):
@@ -213,24 +231,36 @@ class MetaImportPlugin(BeetsPlugin):
         plugin = self.source_plugins[source]
         results = []
 
+        self._log.debug(f'Searching {source} for album: {album} by {artist}')
+
         # Try exact search first
         results = plugin._search_api('album', keywords=album, filters={'artist': artist})
+        if results:
+            self._log.debug(f'Found {len(results)} results with exact search')
+            return results
 
-        if not results:
-            # Try without special characters
-            clean_album = self._clean_string(album)
-            clean_artist = self._clean_string(artist)
-            results = plugin._search_api('album', keywords=clean_album, filters={'artist': clean_artist})
+        # Try without special characters
+        clean_album = self._clean_string(album)
+        clean_artist = self._clean_string(artist)
+        results = plugin._search_api('album', keywords=clean_album, filters={'artist': clean_artist})
+        if results:
+            self._log.debug(f'Found {len(results)} results with cleaned strings')
+            return results
 
-        if not results:
-            # Try just the main part of the album name (before any dash)
-            main_album = album.split('-')[0].strip()
-            results = plugin._search_api('album', keywords=main_album, filters={'artist': artist})
+        # Try just the main part of the album name (before any dash)
+        main_album = album.split('-')[0].strip()
+        results = plugin._search_api('album', keywords=main_album, filters={'artist': artist})
+        if results:
+            self._log.debug(f'Found {len(results)} results with main album name')
+            return results
 
-        return results
+        self._log.debug(f'No results found from {source}')
+        return []
 
     def candidates(self, items, artist, album, va_likely, extra_tags=None):
         """Hook for providing metadata matches during import."""
+        self._log.debug(f'\nSearching for matches: {album} by {artist}')
+
         # Group matches by album to detect same album across sources
         album_groups = defaultdict(list)
 
@@ -240,6 +270,7 @@ class MetaImportPlugin(BeetsPlugin):
                 results = self._search_album(source, artist, album)
 
                 if results:
+                    self._log.debug(f'Processing {len(results)} results from {source}')
                     for result in results:
                         try:
                             # Get album info from the source plugin
@@ -254,6 +285,7 @@ class MetaImportPlugin(BeetsPlugin):
                                 matched = False
                                 for group_id, group in album_groups.items():
                                     if any(self._albums_match(album_info, a) for a in group):
+                                        self._log.debug(f'Matched album from {source} to existing group {group_id}')
                                         group.append(album_info)
                                         matched = True
                                         break
@@ -261,23 +293,30 @@ class MetaImportPlugin(BeetsPlugin):
                                 # Create new group if no match found
                                 if not matched:
                                     group_id = f"group_{len(album_groups)}"
+                                    self._log.debug(f'Creating new group {group_id} for album from {source}')
                                     album_groups[group_id].append(album_info)
 
-                                self._log.debug(f'Found metadata from {source}')
-                        except Exception:
+                                self._log.debug(f'Found metadata from {source}: {album_info.album} by {album_info.artist}')
+                        except Exception as e:
+                            self._log.debug(f'Error processing result from {source}: {str(e)}')
                             continue
             except Exception as e:
                 self._log.warning('Error getting metadata from {}: {}',
                                 source, str(e))
 
         # Merge matches and return candidates
+        self._log.debug(f'\nFound {len(album_groups)} distinct album groups')
         merged_albums = []
-        for group in album_groups.values():
+        for group_id, group in album_groups.items():
             try:
+                self._log.debug(f'\nProcessing group {group_id} with {len(group)} matches')
                 merged = self._merge_album_info(group)
                 if merged:
+                    self._log.debug(f'Successfully merged group {group_id}')
                     merged_albums.append(merged)
-            except Exception:
+            except Exception as e:
+                self._log.debug(f'Error processing group {group_id}: {str(e)}')
                 continue
 
+        self._log.debug(f'\nReturning {len(merged_albums)} merged candidates')
         return merged_albums
