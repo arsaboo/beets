@@ -19,6 +19,12 @@ class MetaImportPlugin(BeetsPlugin):
         'deezer': DeezerPlugin
     }
 
+    # Declare fields that will be added to the database
+    album_types = {
+        'spotify_album_id': types.STRING,
+        'deezer_album_id': types.STRING,
+    }
+
     def __init__(self):
         super().__init__()
 
@@ -39,14 +45,6 @@ class MetaImportPlugin(BeetsPlugin):
                         self._log.warning(f'Unsupported source: {source}')
                         continue
                     self._init_source(source)
-
-        # Add fields for storing identifiers using correct field names
-        field_types = {
-            self.SOURCE_ID_FIELDS[source]: types.STRING
-            for source in self.SUPPORTED_SOURCES.keys()
-        }
-        self._log.debug('Adding fields: {}', field_types)  # Fixed logging format
-        self.add_fields(field_types)  # Changed to correct method name
 
     def _init_source(self, source):
         """Initialize a single source plugin."""
