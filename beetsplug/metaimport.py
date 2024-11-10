@@ -102,6 +102,10 @@ class MetaImportPlugin(BeetsPlugin):
         """Collect identifiers from all configured sources."""
         identifiers = {}
 
+        # Get global timid setting and command-line override
+        is_timid = (config["import"]["timid"].get() or
+                   self.config["timid"].get())
+
         for source in self.sources:
             try:
                 # Check if identifier already exists
@@ -197,19 +201,20 @@ class MetaImportPlugin(BeetsPlugin):
                                 else:
                                     break  # Skip or other action
                             elif match and not isinstance(match, str):
-                                # Regular match selected
                                 field_name = self.SOURCE_ID_FIELDS[source]
-                                # Always show match details in timid mode
+
+                                # Show match details before asking for confirmation
                                 self._show_match_details(match, source)
 
-                                # Require confirmation in timid mode or for imperfect matches
-                                if (best_score == 1.0 and not self.config['timid'].get()):
+                                # Always require confirmation in timid mode
+                                if not is_timid and best_score == 1.0:
                                     identifiers[field_name] = match.info.album_id
                                     self._log.debug(
                                         f'Perfect match found for {source}, '
                                         f'automatically applying'
                                     )
                                 else:
+                                    # Ask for confirmation
                                     if ui.input_yn('Apply match (y/n)?', True):
                                         identifiers[field_name] = match.info.album_id
 
