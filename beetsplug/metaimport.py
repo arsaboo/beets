@@ -12,15 +12,9 @@ from beets.ui.commands import (
     import_cmd  # Import the import command
 )
 from beets.util import displayable_path
-from beetsplug.deezer import DeezerPlugin
-
-# Import supported plugins directly
-from beetsplug.spotify import SpotifyPlugin
-
+from importlib import import_module
 
 class MetaImportPlugin(BeetsPlugin):
-    SUPPORTED_SOURCES = {"spotify": SpotifyPlugin, "deezer": DeezerPlugin}
-
     def __init__(self):
         super().__init__()
 
@@ -32,9 +26,7 @@ class MetaImportPlugin(BeetsPlugin):
         # Initialize source plugins and ID fields
         self.sources = []
         self.source_plugins = {}
-        self.SOURCE_ID_FIELDS = {}  # Move to instance variable
-
-        # Dynamically build album_types from source plugins
+        self.SOURCE_ID_FIELDS = {}
         self.album_types = {}
 
         if self.config["sources"].exists():
@@ -42,30 +34,39 @@ class MetaImportPlugin(BeetsPlugin):
             if configured_sources:
                 self._log.debug(f"Configured sources: {configured_sources}")
                 for source in configured_sources:
-                    if source not in self.SUPPORTED_SOURCES:
-                        self._log.warning(f"Unsupported source: {source}")
-                        continue
                     self._init_source(source)
 
     def _init_source(self, source):
         """Initialize a single source plugin and its fields."""
         try:
-            plugin_class = self.SUPPORTED_SOURCES[source]
-            plugin = plugin_class()
+            # Try to import the plugin module
+            module = import_module(f'beetsplug.{source}')
 
-            # Get field name from plugin
-            field_name = f"{source}_album_id"  # Default format if not specified
-            if hasattr(plugin, 'album_id_field'):
-                field_name = plugin.album_id_field
+            # Get the plugin class (assuming it follows the naming convention)
+            plugin_class_name = f"{source.capitalize()}Plugin"
+            if hasattr(module, plugin_class_name):
+                plugin_class = getattr(module, plugin_class_name)
+                plugin = plugin_class()
 
-            # Add to our mappings
-            self.source_plugins[source] = plugin
-            self.SOURCE_ID_FIELDS[source] = field_name
-            self.album_types[field_name] = types.STRING
-            self.sources.append(source)
+                # Get field name from plugin
+                field_name = f"{source}_album_id"  # Default format
+                if hasattr(plugin, 'album_id_field'):
+                    field_name = plugin.album_id_field
 
-            self._log.debug(f"Successfully loaded source plugin: {source}")
-            self._log.debug(f"Using field name: {field_name}")
+                # Add to our mappings
+                self.source_plugins[source] = plugin
+                self.SOURCE_ID_FIELDS[source] = field_name
+                self.album_types[field_name] = types.STRING
+                self.sources.append(source)
+
+                self._log.debug(f"Successfully loaded source plugin: {source}")
+                self._log.debug(f"Using field name: {field_name}")
+            else:
+                self._log.warning(
+                    f"Plugin {source} found but {plugin_class_name} class not found"
+                )
+        except ImportError as e:
+            self._log.warning(f"Could not import plugin {source}: {str(e)}")
         except Exception as e:
             self._log.warning(f"Failed to initialize source {source}: {str(e)}")
 
