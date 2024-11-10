@@ -112,7 +112,7 @@ class MetaImportPlugin(BeetsPlugin):
                 field_name = self.SOURCE_ID_FIELDS[source]
                 existing_id = getattr(album_obj, field_name, None)
 
-                # Handle existing ID
+                # First check existing ID
                 if existing_id:
                     self._log.debug(f'Found existing {field_name}: {existing_id}')
                     if self.config['timid'] or self.opts.timid:
@@ -128,52 +128,33 @@ class MetaImportPlugin(BeetsPlugin):
                         identifiers[field_name] = existing_id
                         continue
 
-                # Search for new matches
-                self._log.debug(f"Searching {source}...")
+                # No existing ID - try searching
                 plugin = self.source_plugins[source]
-                results = plugin._search_api(
-                    "album", keywords=album, filters={"artist": artist}
-                )
+                self._log.debug(f"Searching {source}...")
+                results = plugin._search_api("album", keywords=album, filters={"artist": artist})
 
                 if results and len(results) > 0:
+                    # Process search results to find a match
                     candidates = []
                     for result in results:
                         album_info = plugin.album_for_id(str(result["id"]))
                         if album_info:
-                            match = autotag.AlbumMatch(
-                                distance=hooks.Distance(),
-                                info=album_info,
-                                mapping={},
-                                extra_items=[],
-                                extra_tracks=[],
-                            )
-                            score = self._score_match(album_info, artist, album)
-                            match.distance.add("album", 1.0 - score)
-                            candidates.append(match)
+                            # Show match details before confirming
+                            print_(f"\nFound {source} match:")
+                            print_(f"  Artist: {album_info.artist}")
+                            print_(f"  Album: {album_info.album}")
 
-                    if candidates:
-                        candidates.sort(key=lambda c: c.distance)
-                        album_info = candidates[0].info
-
-                        # Show match details and confirm if in timid mode
-                        print_(f"\nFound {source} match:")
-                        print_(f"  Artist: {album_info.artist}")
-                        print_(f"  Album: {album_info.album}")
-
-                        if not (self.config['timid'] or self.opts.timid) or \
-                           ui.input_yn(f'Use this {source} match? (Y/n)', True):
-                            identifiers[field_name] = album_info.album_id
+                            if not (self.config['timid'] or self.opts.timid) or \
+                               ui.input_yn(f'Use this {source} match? (Y/n)', True):
+                                identifiers[field_name] = album_info.album_id
+                                break
 
             except Exception as e:
                 error_sources.append(source)
                 self._log.warning(f"Error searching {source}: {e}")
                 continue
 
-        if error_sources and not identifiers:
-            # Only show error summary if we found no matches
-            for source in error_sources:
-                self._log.warning(f"{source}: Error fetching data")
-
+        # Return any identifiers we found, even if some sources failed
         return identifiers
 
     def _show_match_details(self, match, source):
