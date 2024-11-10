@@ -2,8 +2,7 @@ from beets import autotag, config, ui, plugins
 from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.dbcore import types
-from beets.autotag import hooks, Proposal, Recommendation
-from beets.ui.commands import choose_candidate
+from beets.autotag import hooks, Proposal, Recommendation, Distance
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -67,6 +66,25 @@ class MetaImportPlugin(BeetsPlugin):
         cmd.func = self._command
         return [cmd]
 
+    def _score_match(self, album_info, artist, album):
+        """Calculate a match score between input metadata and album info."""
+        dist = Distance()
+
+        # Compare artists - use beets' string distance
+        if album_info.artist and artist:
+            dist.add_string('artist', artist, album_info.artist)
+
+        # Compare album titles
+        if album_info.album and album:
+            dist.add_string('album', album, album_info.album)
+
+        # Additional scoring based on other metadata
+        if album_info.year:
+            dist.add('year', 0.0)  # No penalty for year mismatch for now
+
+        # Return 1.0 - distance to get a score where 1.0 is perfect
+        return 1.0 - dist.distance
+
     def _collect_identifiers(self, artist, album):
         """Collect identifiers from all configured sources."""
         identifiers = {}
@@ -81,10 +99,15 @@ class MetaImportPlugin(BeetsPlugin):
                     for result in results:
                         album_info = plugin.album_for_id(str(result['id']))
                         if album_info:
-                            # Create an AlbumMatch for each candidate
-                            # Use empty mappings since we only need the album info
+                            # Score the match
+                            score = self._score_match(album_info, artist, album)
+
+                            # Create distance object for display
+                            dist = Distance()
+                            dist.add('album', 1.0 - score)
+
                             candidates.append(autotag.AlbumMatch(
-                                distance=hooks.Distance(),
+                                distance=dist,
                                 info=album_info,
                                 mapping={},
                                 extra_items=[],
@@ -92,13 +115,24 @@ class MetaImportPlugin(BeetsPlugin):
                             ))
 
                     if candidates:
-                        # Create proposal using beets' autotag module
-                        prop = Proposal(candidates, Recommendation.strong)
+                        # Sort candidates by score
+                        candidates.sort(key=lambda c: c.distance)
+
+                        # Determine recommendation based on score
+                        rec = Recommendation.none
+                        best_score = 1.0 - candidates[0].distance
+                        if best_score > 0.8:
+                            rec = Recommendation.strong
+                        elif best_score > 0.5:
+                            rec = Recommendation.medium
+
+                        # Create proposal
+                        prop = Proposal(candidates, rec)
 
                         # Present candidates using beets' UI
                         match = choose_candidate(
                             prop.candidates,
-                            False,  # album mode
+                            False,
                             prop.recommendation,
                             artist,
                             album,
@@ -107,7 +141,6 @@ class MetaImportPlugin(BeetsPlugin):
                         )
 
                         if match:
-                            # Store the identifier if a match was chosen
                             field_name = self.SOURCE_ID_FIELDS[source]
                             identifiers[field_name] = match.info.album_id
                             self._log.debug(f'Found {field_name}: {match.info.album_id}')
