@@ -10,6 +10,7 @@ from beets.ui.commands import (
     manual_id,
     abort_action,
 )
+from beets.util import displayable_path
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -220,7 +221,7 @@ class MetaImportPlugin(BeetsPlugin):
         for (albumartist, album_name), items in albums.items():
             # Show full path to album
             print_()  # Blank line
-            path = items[0].get_album().path
+            path = displayable_path(items[0].get_album().path)
             print_(ui.colorize('text_highlight', path))
             print_(ui.colorize('text', f' ({len(items)} items)'))
 
