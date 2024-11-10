@@ -248,7 +248,9 @@ class MetaImportPlugin(BeetsPlugin):
                         print_("Match rejected. Continuing search...")
 
             except Exception as e:
+                # Log the error but continue with next source instead of returning
                 self._log.warning(f"Error getting {source} identifier: {str(e)}")
+                continue  # Continue with next source instead of stopping
 
         return identifiers
 
