@@ -235,12 +235,6 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
-        # Store opts for use in _collect_identifiers
-        self.opts = opts
-
-        # Override config from command line option
-        self.config["timid"].set(opts.timid)
-
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
             return
