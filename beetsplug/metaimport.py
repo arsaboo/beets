@@ -34,6 +34,7 @@ class MetaImportPlugin(BeetsPlugin):
 
         self.config.add({
             'sources': [],  # List of metadata sources
+            'timid': False,  # Default value for timid
         })
 
         # Initialize source plugins
@@ -100,7 +101,7 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj, opts):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        timid = opts.timid or config["import"]["timid"].get() or self.config["timid"].get()
+        timid = opts.timid or self.config["timid"].get() or config["import"]["timid"].get()
 
         for source in self.sources:
             try:
