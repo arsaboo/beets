@@ -105,12 +105,14 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
+        error_sources = []
 
         for source in self.sources:
             try:
                 field_name = self.SOURCE_ID_FIELDS[source]
                 existing_id = getattr(album_obj, field_name, None)
 
+                # Handle existing ID
                 if existing_id:
                     self._log.debug(f'Found existing {field_name}: {existing_id}')
                     if self.config['timid'] or self.opts.timid:
@@ -127,6 +129,7 @@ class MetaImportPlugin(BeetsPlugin):
                         continue
 
                 # Search for new matches
+                self._log.debug(f"Searching {source}...")
                 plugin = self.source_plugins[source]
                 results = plugin._search_api(
                     "album", keywords=album, filters={"artist": artist}
@@ -162,8 +165,14 @@ class MetaImportPlugin(BeetsPlugin):
                             identifiers[field_name] = album_info.album_id
 
             except Exception as e:
+                error_sources.append(source)
                 self._log.warning(f"Error searching {source}: {e}")
                 continue
+
+        if error_sources and not identifiers:
+            # Only show error summary if we found no matches
+            for source in error_sources:
+                self._log.warning(f"{source}: Error fetching data")
 
         return identifiers
 
