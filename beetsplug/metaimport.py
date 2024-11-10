@@ -69,7 +69,11 @@ class MetaImportPlugin(BeetsPlugin):
             help="collect identifiers from configured sources",
             parent=import_cmd.parser,  # Inherit options from import command
         )
-        # Remove the custom timid option here
+        cmd.parser.add_option(
+            '-t', '--timid',
+            action='store_true',
+            help='always confirm all matches'
+        )
         cmd.func = self._command
         return [cmd]
 
@@ -234,6 +238,9 @@ class MetaImportPlugin(BeetsPlugin):
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
             return
+
+        if opts.timid:
+            config['import']['timid'] = True
 
         items = lib.items(ui.decargs(args))
         if not items:
