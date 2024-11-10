@@ -100,6 +100,7 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
+        timid = config["import"]["timid"].get() or self.config["timid"].get()
 
         for source in self.sources:
             try:
@@ -201,19 +202,18 @@ class MetaImportPlugin(BeetsPlugin):
                                 # Show match details before asking for confirmation
                                 self._show_match_details(match, source)
 
-                                # Always require confirmation in timid mode
-                                # Check both global import.timid and local -t flag
-                                if (not config['import']['timid'].get() and
-                                    not self.opts.timid and
-                                    best_score == 1.0):
-                                    identifiers[field_name] = match.info.album_id
-                                    self._log.debug(
-                                        'Perfect match found for {}, '
-                                        'automatically applying'.format(source)
-                                    )
-                                else:
+                                # Always prompt in timid mode
+                                if timid or best_score < 1.0:
                                     if ui.input_yn('Apply match (y/n)?', True):
                                         identifiers[field_name] = match.info.album_id
+                                        self._log.debug(f'Match applied for {source}')
+                                else:
+                                    # Auto-apply perfect matches in non-timid mode
+                                    identifiers[field_name] = match.info.album_id
+                                    self._log.debug(
+                                        f'Perfect match found for {source}, '
+                                        f'automatically applying'
+                                    )
 
                             break  # Done with this source
                     break  # No results found
@@ -237,6 +237,9 @@ class MetaImportPlugin(BeetsPlugin):
         """Main command implementation."""
         # Store opts for use in _collect_identifiers
         self.opts = opts
+
+        # Override config from command line option
+        self.config["timid"].set(opts.timid)
 
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
