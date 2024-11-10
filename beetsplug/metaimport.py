@@ -148,6 +148,10 @@ class MetaImportPlugin(BeetsPlugin):
                             elif best_score > 0.5:
                                 rec = Recommendation.medium
 
+                            # Force showing candidates in timid mode
+                            if self.config['timid'] or hasattr(self, 'opts') and self.opts.timid:
+                                rec = min(rec, Recommendation.medium)
+
                             # Present candidates
                             match = choose_candidate(
                                 candidates=candidates,
