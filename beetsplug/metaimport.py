@@ -98,10 +98,9 @@ class MetaImportPlugin(BeetsPlugin):
         # Return 1.0 - distance to get a score where 1.0 is perfect
         return 1.0 - dist.distance
 
-    def _collect_identifiers(self, artist, album, album_obj, opts):
+    def _collect_identifiers(self, artist, album, album_obj, timid):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        timid = opts.timid or self.config["timid"].get() or config["import"]["timid"].get()
 
         for source in self.sources:
             try:
@@ -262,7 +261,7 @@ class MetaImportPlugin(BeetsPlugin):
             print_(ui.colorize('text', f' ({len(items)} items)'))
 
             # Collect identifiers
-            identifiers = self._collect_identifiers(albumartist, album_name, items[0].get_album(), opts)
+            identifiers = self._collect_identifiers(albumartist, album_name, items[0].get_album(), opts.timid)
 
             if identifiers:
                 # Update the first item's album with the identifiers
