@@ -105,9 +105,8 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-
-        # First build up potential identifiers
         potential_identifiers = {}
+
         for source in self.sources:
             try:
                 # Check if identifier already exists
@@ -115,7 +114,11 @@ class MetaImportPlugin(BeetsPlugin):
                 existing_id = getattr(album_obj, field_name, None)
                 if existing_id:
                     self._log.debug(f'Using existing {field_name}: {existing_id}')
-                    potential_identifiers[field_name] = existing_id
+                    # In timid mode, add to potential rather than accepting immediately
+                    if self.config['timid'] or self.opts.timid:
+                        potential_identifiers[field_name] = existing_id
+                    else:
+                        identifiers[field_name] = existing_id
                     continue
 
                 plugin = self.source_plugins[source]
@@ -224,15 +227,16 @@ class MetaImportPlugin(BeetsPlugin):
             except Exception as e:
                 self._log.warning(f"Error getting {source} identifier: {str(e)}")
 
-        # In timid mode, ask for confirmation before applying any identifiers
+        # If we have any potential identifiers (either from existing or new matches)
+        # in timid mode, ask for confirmation
         if potential_identifiers and (self.config['timid'] or self.opts.timid):
             print_("\nPotential identifiers found:")
             for source, id_value in potential_identifiers.items():
                 print_(f"    {source}: {id_value}")
-            if not ui.input_yn('Apply these identifiers (y/n)?', True):
-                return {}
+            if ui.input_yn('Apply these identifiers (y/n)?', True):
+                identifiers.update(potential_identifiers)
 
-        return potential_identifiers
+        return identifiers
 
     def _show_match_details(self, match, source):
         """Show detailed information about a match."""
