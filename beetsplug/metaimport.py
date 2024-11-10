@@ -114,12 +114,16 @@ class MetaImportPlugin(BeetsPlugin):
                 existing_id = getattr(album_obj, field_name, None)
                 if existing_id:
                     self._log.debug(f'Using existing {field_name}: {existing_id}')
-                    # In timid mode, add to potential rather than accepting immediately
+                    # In timid mode, ask to use existing or search fresh
                     if self.config['timid'] or self.opts.timid:
-                        potential_identifiers[field_name] = existing_id
+                        print_(f"\nFound existing {source} ID: {existing_id}")
+                        if ui.input_yn('Use existing ID (y/n)?', True):
+                            potential_identifiers[field_name] = existing_id
+                            continue
+                        # User declined - fall through to fresh search
                     else:
                         identifiers[field_name] = existing_id
-                    continue
+                        continue
 
                 plugin = self.source_plugins[source]
 
