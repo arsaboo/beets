@@ -121,7 +121,7 @@ class MetaImportPlugin(BeetsPlugin):
                         print_(f"  Artist: {artist}")
                         print_(f"  Album: {album}")
                         print_(f"  ID: {existing_id}")
-                        if ui.input_yn('Use this match (y/n)?', True):
+                        if ui.input_yn('Use this match? (Y/n)', True):  # Set default=True
                             identifiers[field_name] = existing_id
                             continue
                         # User declined - fall through to fresh search
@@ -167,7 +167,7 @@ class MetaImportPlugin(BeetsPlugin):
                             if self.config['timid'] or self.opts.timid:
                                 rec = min(rec, Recommendation.medium)
                                 # Always ask for confirmation in timid mode
-                                if not ui.input_yn(f'Apply {source} match (y/n)?', True):
+                                if not ui.input_yn(f'Apply {source} match? (Y/n)', True):  # Set default=True
                                     continue
 
                             # Present candidates
@@ -226,7 +226,7 @@ class MetaImportPlugin(BeetsPlugin):
 
                                 # Show match details and ask for confirmation
                                 self._show_match_details(match, source)
-                                if ui.input_yn('Apply match (y/n)?', True):
+                                if ui.input_yn('Apply match? (Y/n)', True):  # Set default=True
                                     potential_identifiers[field_name] = match.info.album_id
                                     self._log.debug(f'Match applied for {source}')
 
@@ -240,7 +240,7 @@ class MetaImportPlugin(BeetsPlugin):
                     print_(f"  Album: {album}")
                     for field, id_val in potential_identifiers.items():
                         print_(f"  {field}: {id_val}")
-                    if ui.input_yn('Apply this match (y/n)?', True):
+                    if ui.input_yn('Apply this match? (Y/n)', True):  # Set default=True
                         identifiers.update(potential_identifiers)
                         potential_identifiers = {}
                     else:
