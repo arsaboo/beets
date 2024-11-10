@@ -105,155 +105,67 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        potential_identifiers = {}
 
         for source in self.sources:
             try:
-                # Check if identifier already exists
                 field_name = self.SOURCE_ID_FIELDS[source]
                 existing_id = getattr(album_obj, field_name, None)
 
                 if existing_id:
-                    self._log.debug(f'Using existing {field_name}: {existing_id}')
-                    # In timid mode, show match details and ask for confirmation
+                    self._log.debug(f'Found existing {field_name}: {existing_id}')
                     if self.config['timid'] or self.opts.timid:
                         print_(f"\nFound existing {source} match:")
                         print_(f"  Artist: {artist}")
                         print_(f"  Album: {album}")
                         print_(f"  ID: {existing_id}")
-                        if ui.input_yn('Use this match? (Y/n)', True):  # Set default=True
+                        if ui.input_yn('Use this match? (Y/n)', True):
                             identifiers[field_name] = existing_id
                             continue
-                        # User declined - fall through to fresh search
-                        print_("Searching for new match...")
+                        print_(f"Searching {source} for new match...")
                     else:
                         identifiers[field_name] = existing_id
                         continue
 
+                # Search for new matches
                 plugin = self.source_plugins[source]
+                results = plugin._search_api(
+                    "album", keywords=album, filters={"artist": artist}
+                )
 
-                # Main matching loop - allows retrying with manual search/ID
-                while True:
-                    results = plugin._search_api(
-                        "album", keywords=album, filters={"artist": artist}
-                    )
-
-                    if results and len(results) > 0:
-                        candidates = []
-                        for result in results:
-                            album_info = plugin.album_for_id(str(result["id"]))
-                            if album_info:
-                                match = autotag.AlbumMatch(
-                                    distance=hooks.Distance(),
-                                    info=album_info,
-                                    mapping={},
-                                    extra_items=[],
-                                    extra_tracks=[],
-                                )
-                                score = self._score_match(album_info, artist, album)
-                                match.distance.add("album", 1.0 - score)
-                                candidates.append(match)
-
-                        if candidates:
-                            candidates.sort(key=lambda c: c.distance)
-                            best_score = 1.0 - candidates[0].distance
-                            rec = Recommendation.none
-                            if best_score > 0.8:
-                                rec = Recommendation.strong
-                            elif best_score > 0.5:
-                                rec = Recommendation.medium
-
-                            # Force showing candidates in timid mode
-                            if self.config['timid'] or self.opts.timid:
-                                rec = min(rec, Recommendation.medium)
-                                # Always ask for confirmation in timid mode
-                                if not ui.input_yn(f'Apply {source} match? (Y/n)', True):  # Set default=True
-                                    continue
-
-                            # Present candidates
-                            match = choose_candidate(
-                                candidates=candidates,
-                                singleton=False,
-                                rec=rec,
-                                cur_artist=artist,
-                                cur_album=album,
-                                itemcount=len(album_info.tracks) if album_info else 0,
-                                choices=[
-                                    PromptChoice("s", "Skip", importer.action.SKIP),
-                                    PromptChoice(
-                                        "u", "Use as-is", importer.action.ASIS
-                                    ),
-                                    PromptChoice(
-                                        "t", "as Tracks", importer.action.TRACKS
-                                    ),
-                                    PromptChoice(
-                                        "g", "Group albums", importer.action.ALBUMS
-                                    ),
-                                    PromptChoice("e", "Enter search", manual_search),
-                                    PromptChoice("i", "enter Id", manual_id),
-                                    PromptChoice("b", "aBort", abort_action),
-                                ],
+                if results and len(results) > 0:
+                    candidates = []
+                    for result in results:
+                        album_info = plugin.album_for_id(str(result["id"]))
+                        if album_info:
+                            match = autotag.AlbumMatch(
+                                distance=hooks.Distance(),
+                                info=album_info,
+                                mapping={},
+                                extra_items=[],
+                                extra_tracks=[],
                             )
+                            score = self._score_match(album_info, artist, album)
+                            match.distance.add("album", 1.0 - score)
+                            candidates.append(match)
 
-                            # Handle choice callbacks
-                            if isinstance(match, PromptChoice):
-                                if match.callback == manual_id:
-                                    # Get ID from user
-                                    search_id = ui.input_("Enter ID:").strip()
-                                    album_info = plugin.album_for_id(search_id)
-                                    if album_info:
-                                        field_name = self.SOURCE_ID_FIELDS[source]
-                                        potential_identifiers[field_name] = album_info.album_id
-                                        print_(f"\nDetails for {source} match:")
-                                        if album_info.tracks:
-                                            for track in album_info.tracks:
-                                                print_(
-                                                    f"     * (#{track.index}) {track.title}"
-                                                    f" ({track.length/60:.2f})"
-                                                )
-                                    break
-                                elif match.callback == manual_search:
-                                    # Get search terms from user
-                                    artist = ui.input_("Artist:").strip()
-                                    album = ui.input_("Album:").strip()
-                                    continue  # Retry search with new terms
-                                elif match.callback == abort_action:
-                                    raise importer.ImportAbortError()
-                                else:
-                                    break  # Skip or other action
-                            elif match and not isinstance(match, str):
-                                field_name = self.SOURCE_ID_FIELDS[source]
+                    if candidates:
+                        candidates.sort(key=lambda c: c.distance)
+                        album_info = candidates[0].info
 
-                                # Show match details and ask for confirmation
-                                self._show_match_details(match, source)
-                                if ui.input_yn('Apply match? (Y/n)', True):  # Set default=True
-                                    potential_identifiers[field_name] = match.info.album_id
-                                    self._log.debug(f'Match applied for {source}')
+                        # Show match details and confirm if in timid mode
+                        print_(f"\nFound {source} match:")
+                        print_(f"  Artist: {album_info.artist}")
+                        print_(f"  Album: {album_info.album}")
 
-                            break  # Done with this source
-                    break  # No results found
-
-                # For new matches in timid mode, show details before storing
-                if potential_identifiers and (self.config['timid'] or self.opts.timid):
-                    print_(f"\nNew {source} match found:")
-                    print_(f"  Artist: {artist}")
-                    print_(f"  Album: {album}")
-                    for field, id_val in potential_identifiers.items():
-                        print_(f"  {field}: {id_val}")
-                    if ui.input_yn('Apply this match? (Y/n)', True):  # Set default=True
-                        identifiers.update(potential_identifiers)
-                        potential_identifiers = {}
-                    else:
-                        potential_identifiers = {}
-                        print_("Match rejected. Continuing search...")
+                        if not (self.config['timid'] or self.opts.timid) or \
+                           ui.input_yn(f'Use this {source} match? (Y/n)', True):
+                            identifiers[field_name] = album_info.album_id
 
             except Exception as e:
-                # Log the error but don't return yet - try other sources
-                self._log.warning(f"Error getting {source} identifier: {str(e)}")
+                self._log.warning(f"Error searching {source}: {e}")
                 continue
 
-        # Return any identifiers we found, even if some sources failed
-        return identifiers or potential_identifiers
+        return identifiers
 
     def _show_match_details(self, match, source):
         """Show detailed information about a match."""
