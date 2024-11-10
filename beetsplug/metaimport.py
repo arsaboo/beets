@@ -8,49 +8,46 @@ from beets.ui.commands import (
     PromptChoice,
     manual_search,
     manual_id,
-    abort_action
+    abort_action,
 )
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
 from beetsplug.deezer import DeezerPlugin
 
+
 class MetaImportPlugin(BeetsPlugin):
     # Map sources to their corresponding field names
-    SOURCE_ID_FIELDS = {
-        'spotify': 'spotify_album_id',
-        'deezer': 'deezer_album_id'
-    }
+    SOURCE_ID_FIELDS = {"spotify": "spotify_album_id", "deezer": "deezer_album_id"}
 
-    SUPPORTED_SOURCES = {
-        'spotify': SpotifyPlugin,
-        'deezer': DeezerPlugin
-    }
+    SUPPORTED_SOURCES = {"spotify": SpotifyPlugin, "deezer": DeezerPlugin}
 
     # Declare fields that will be added to the database
     album_types = {
-        'spotify_album_id': types.STRING,
-        'deezer_album_id': types.STRING,
+        "spotify_album_id": types.STRING,
+        "deezer_album_id": types.STRING,
     }
 
     def __init__(self):
         super().__init__()
 
-        self.config.add({
-            'sources': [],  # List of metadata sources
-        })
+        self.config.add(
+            {
+                "sources": [],  # List of metadata sources
+            }
+        )
 
         # Initialize source plugins
         self.sources = []
         self.source_plugins = {}
 
-        if self.config['sources'].exists():
-            configured_sources = self.config['sources'].as_str_seq()
+        if self.config["sources"].exists():
+            configured_sources = self.config["sources"].as_str_seq()
             if configured_sources:
-                self._log.debug(f'Configured sources: {configured_sources}')
+                self._log.debug(f"Configured sources: {configured_sources}")
                 for source in configured_sources:
                     if source not in self.SUPPORTED_SOURCES:
-                        self._log.warning(f'Unsupported source: {source}')
+                        self._log.warning(f"Unsupported source: {source}")
                         continue
                     self._init_source(source)
 
@@ -61,14 +58,13 @@ class MetaImportPlugin(BeetsPlugin):
             plugin = plugin_class()
             self.source_plugins[source] = plugin
             self.sources.append(source)
-            self._log.debug(f'Successfully loaded source plugin: {source}')
+            self._log.debug(f"Successfully loaded source plugin: {source}")
         except Exception as e:
-            self._log.warning(f'Failed to initialize source {source}: {str(e)}')
+            self._log.warning(f"Failed to initialize source {source}: {str(e)}")
 
     def commands(self):
         cmd = ui.Subcommand(
-            'metaimport',
-            help='collect identifiers from configured sources'
+            "metaimport", help="collect identifiers from configured sources"
         )
         cmd.func = self._command
         return [cmd]
@@ -79,15 +75,15 @@ class MetaImportPlugin(BeetsPlugin):
 
         # Compare artists - use beets' string distance
         if album_info.artist and artist:
-            dist.add_string('artist', artist, album_info.artist)
+            dist.add_string("artist", artist, album_info.artist)
 
         # Compare album titles
         if album_info.album and album:
-            dist.add_string('album', album, album_info.album)
+            dist.add_string("album", album, album_info.album)
 
         # Additional scoring based on other metadata
         if album_info.year:
-            dist.add('year', 0.0)  # No penalty for year mismatch for now
+            dist.add("year", 0.0)  # No penalty for year mismatch for now
 
         # Return 1.0 - distance to get a score where 1.0 is perfect
         return 1.0 - dist.distance
@@ -102,12 +98,14 @@ class MetaImportPlugin(BeetsPlugin):
 
                 # Main matching loop - allows retrying with manual search/ID
                 while True:
-                    results = plugin._search_api('album', keywords=album, filters={'artist': artist})
+                    results = plugin._search_api(
+                        "album", keywords=album, filters={"artist": artist}
+                    )
 
                     if results and len(results) > 0:
                         candidates = []
                         for result in results:
-                            album_info = plugin.album_for_id(str(result['id']))
+                            album_info = plugin.album_for_id(str(result["id"]))
                             if album_info:
                                 match = autotag.AlbumMatch(
                                     distance=hooks.Distance(),
@@ -117,7 +115,7 @@ class MetaImportPlugin(BeetsPlugin):
                                     extra_tracks=[],
                                 )
                                 score = self._score_match(album_info, artist, album)
-                                match.distance.add('album', 1.0 - score)
+                                match.distance.add("album", 1.0 - score)
                                 candidates.append(match)
 
                         if candidates:
@@ -138,21 +136,27 @@ class MetaImportPlugin(BeetsPlugin):
                                 cur_album=album,
                                 itemcount=len(album_info.tracks) if album_info else 0,
                                 choices=[
-                                    PromptChoice('s', 'Skip', importer.action.SKIP),
-                                    PromptChoice('u', 'Use as-is', importer.action.ASIS),
-                                    PromptChoice('t', 'as Tracks', importer.action.TRACKS),
-                                    PromptChoice('g', 'Group albums', importer.action.ALBUMS),
-                                    PromptChoice('e', 'Enter search', manual_search),
-                                    PromptChoice('i', 'enter Id', manual_id),
-                                    PromptChoice('b', 'aBort', abort_action),
-                                ]
+                                    PromptChoice("s", "Skip", importer.action.SKIP),
+                                    PromptChoice(
+                                        "u", "Use as-is", importer.action.ASIS
+                                    ),
+                                    PromptChoice(
+                                        "t", "as Tracks", importer.action.TRACKS
+                                    ),
+                                    PromptChoice(
+                                        "g", "Group albums", importer.action.ALBUMS
+                                    ),
+                                    PromptChoice("e", "Enter search", manual_search),
+                                    PromptChoice("i", "enter Id", manual_id),
+                                    PromptChoice("b", "aBort", abort_action),
+                                ],
                             )
 
                             # Handle choice callbacks
                             if isinstance(match, PromptChoice):
                                 if match.callback == manual_id:
                                     # Get ID from user
-                                    search_id = ui.input_('Enter ID:').strip()
+                                    search_id = ui.input_("Enter ID:").strip()
                                     album_info = plugin.album_for_id(search_id)
                                     if album_info:
                                         field_name = self.SOURCE_ID_FIELDS[source]
@@ -160,13 +164,15 @@ class MetaImportPlugin(BeetsPlugin):
                                         print_(f"\nDetails for {source} match:")
                                         if album_info.tracks:
                                             for track in album_info.tracks:
-                                                print_(f"     * (#{track.index}) {track.title}"
-                                                    f" ({track.length/60:.2f})")
+                                                print_(
+                                                    f"     * (#{track.index}) {track.title}"
+                                                    f" ({track.length/60:.2f})"
+                                                )
                                     break
                                 elif match.callback == manual_search:
                                     # Get search terms from user
-                                    artist = ui.input_('Artist:').strip()
-                                    album = ui.input_('Album:').strip()
+                                    artist = ui.input_("Artist:").strip()
+                                    album = ui.input_("Album:").strip()
                                     continue  # Retry search with new terms
                                 elif match.callback == abort_action:
                                     raise importer.ImportAbortError()
@@ -179,25 +185,27 @@ class MetaImportPlugin(BeetsPlugin):
                                 print_(f"\nDetails for {source} match:")
                                 if match.info.tracks:
                                     for track in match.info.tracks:
-                                        print_(f"     * (#{track.index}) {track.title}"
-                                              f" ({track.length/60:.2f})")
+                                        print_(
+                                            f"     * (#{track.index}) {track.title}"
+                                            f" ({track.length/60:.2f})"
+                                        )
                             break  # Done with this source
                     break  # No results found
 
             except Exception as e:
-                self._log.warning(f'Error getting {source} identifier: {str(e)}')
+                self._log.warning(f"Error getting {source} identifier: {str(e)}")
 
         return identifiers
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
         if not self.sources:
-            self._log.warning('No valid metadata sources configured')
+            self._log.warning("No valid metadata sources configured")
             return
 
         items = lib.items(ui.decargs(args))
         if not items:
-            self._log.warning('No items matched your query')
+            self._log.warning("No items matched your query")
             return
 
         # Group items by album
@@ -210,8 +218,11 @@ class MetaImportPlugin(BeetsPlugin):
 
         # Process each album
         for (albumartist, album_name), items in albums.items():
-            print_(colorize('text_highlight', '\nProcessing album:'))
-            print_(colorize('text', f'  {albumartist} - {album_name}'))
+            # Show full path to album
+            print_()  # Blank line
+            path = items[0].get_album().path
+            print_(ui.colorize('text_highlight', path))
+            print_(ui.colorize('text', f' ({len(items)} items)'))
 
             # Collect identifiers
             identifiers = self._collect_identifiers(albumartist, album_name)
