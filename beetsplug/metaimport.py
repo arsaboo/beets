@@ -248,11 +248,12 @@ class MetaImportPlugin(BeetsPlugin):
                         print_("Match rejected. Continuing search...")
 
             except Exception as e:
-                # Log the error but continue with next source instead of returning
+                # Log the error but don't return yet - try other sources
                 self._log.warning(f"Error getting {source} identifier: {str(e)}")
-                continue  # Continue with next source instead of stopping
+                continue
 
-        return identifiers
+        # Return any identifiers we found, even if some sources failed
+        return identifiers or potential_identifiers
 
     def _show_match_details(self, match, source):
         """Show detailed information about a match."""
