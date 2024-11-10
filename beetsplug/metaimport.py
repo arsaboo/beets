@@ -106,6 +106,8 @@ class MetaImportPlugin(BeetsPlugin):
         """Collect identifiers from all configured sources."""
         identifiers = {}
 
+        # First build up potential identifiers
+        potential_identifiers = {}
         for source in self.sources:
             try:
                 # Check if identifier already exists
@@ -113,7 +115,7 @@ class MetaImportPlugin(BeetsPlugin):
                 existing_id = getattr(album_obj, field_name, None)
                 if existing_id:
                     self._log.debug(f'Using existing {field_name}: {existing_id}')
-                    identifiers[field_name] = existing_id
+                    potential_identifiers[field_name] = existing_id
                     continue
 
                 plugin = self.source_plugins[source]
@@ -189,7 +191,7 @@ class MetaImportPlugin(BeetsPlugin):
                                     album_info = plugin.album_for_id(search_id)
                                     if album_info:
                                         field_name = self.SOURCE_ID_FIELDS[source]
-                                        identifiers[field_name] = album_info.album_id
+                                        potential_identifiers[field_name] = album_info.album_id
                                         print_(f"\nDetails for {source} match:")
                                         if album_info.tracks:
                                             for track in album_info.tracks:
@@ -213,7 +215,7 @@ class MetaImportPlugin(BeetsPlugin):
                                 # Show match details and ask for confirmation
                                 self._show_match_details(match, source)
                                 if ui.input_yn('Apply match (y/n)?', True):
-                                    identifiers[field_name] = match.info.album_id
+                                    potential_identifiers[field_name] = match.info.album_id
                                     self._log.debug(f'Match applied for {source}')
 
                             break  # Done with this source
@@ -222,7 +224,15 @@ class MetaImportPlugin(BeetsPlugin):
             except Exception as e:
                 self._log.warning(f"Error getting {source} identifier: {str(e)}")
 
-        return identifiers
+        # In timid mode, ask for confirmation before applying any identifiers
+        if potential_identifiers and (self.config['timid'] or self.opts.timid):
+            print_("\nPotential identifiers found:")
+            for source, id_value in potential_identifiers.items():
+                print_(f"    {source}: {id_value}")
+            if not ui.input_yn('Apply these identifiers (y/n)?', True):
+                return {}
+
+        return potential_identifiers
 
     def _show_match_details(self, match, source):
         """Show detailed information about a match."""
