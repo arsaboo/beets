@@ -66,11 +66,13 @@ class MetaImportPlugin(BeetsPlugin):
     def commands(self):
         cmd = ui.Subcommand(
             "metaimport",
-            help="collect identifiers from configured sources",
-            parent=import_cmd.parser,  # Inherit options from import command
+            help="collect identifiers from configured sources"
         )
+        # Add timid flag directly to parser
         cmd.parser.add_option(
-            '-t', '--timid',
+            '-t',
+            '--timid',
+            dest='timid',
             action='store_true',
             help='always confirm all matches'
         )
@@ -239,6 +241,7 @@ class MetaImportPlugin(BeetsPlugin):
             self._log.warning("No valid metadata sources configured")
             return
 
+        # Set timid mode if -t flag is used
         if opts.timid:
             config['import']['timid'] = True
 
