@@ -99,8 +99,6 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        # Read the timid flag from the global config
-        timid = config["import"]["timid"].get(bool)
 
         for source in self.sources:
             try:
@@ -199,21 +197,11 @@ class MetaImportPlugin(BeetsPlugin):
                             elif match and not isinstance(match, str):
                                 field_name = self.SOURCE_ID_FIELDS[source]
 
-                                # Show match details before asking for confirmation
+                                # Show match details and ask for confirmation
                                 self._show_match_details(match, source)
-
-                                # Always prompt in timid mode
-                                if timid or best_score < 1.0:
-                                    if ui.input_yn('Apply match (y/n)?', True):
-                                        identifiers[field_name] = match.info.album_id
-                                        self._log.debug(f'Match applied for {source}')
-                                else:
-                                    # Auto-apply perfect matches in non-timid mode
+                                if ui.input_yn('Apply match (y/n)?', True):
                                     identifiers[field_name] = match.info.album_id
-                                    self._log.debug(
-                                        f'Perfect match found for {source}, '
-                                        f'automatically applying'
-                                    )
+                                    self._log.debug(f'Match applied for {source}')
 
                             break  # Done with this source
                     break  # No results found
