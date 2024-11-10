@@ -1,20 +1,20 @@
-from beets import autotag, config, ui, plugins, importer
-from beets.plugins import BeetsPlugin
-from beets.ui import print_, colorize
+from beets import autotag, config, importer, plugins, ui
+from beets.autotag import Distance, Proposal, Recommendation, hooks
 from beets.dbcore import types
-from beets.autotag import hooks, Proposal, Recommendation, Distance
+from beets.plugins import BeetsPlugin
+from beets.ui import colorize, print_
 from beets.ui.commands import (
-    choose_candidate,
     PromptChoice,
-    manual_search,
-    manual_id,
     abort_action,
+    choose_candidate,
+    manual_id,
+    manual_search,
 )
 from beets.util import displayable_path
+from beetsplug.deezer import DeezerPlugin
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
-from beetsplug.deezer import DeezerPlugin
 
 
 class MetaImportPlugin(BeetsPlugin):
@@ -34,7 +34,6 @@ class MetaImportPlugin(BeetsPlugin):
 
         self.config.add({
             'sources': [],  # List of metadata sources
-            'timid': config['import']['timid'].get(),  # Inherit from import config
         })
 
         # Initialize source plugins
@@ -101,10 +100,6 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-
-        # Get global timid setting and command-line override
-        is_timid = (config["import"]["timid"].get() or
-                   self.config["timid"].get())
 
         for source in self.sources:
             try:
@@ -207,14 +202,16 @@ class MetaImportPlugin(BeetsPlugin):
                                 self._show_match_details(match, source)
 
                                 # Always require confirmation in timid mode
-                                if not is_timid and best_score == 1.0:
+                                # Check both global import.timid and local -t flag
+                                if (not config['import']['timid'].get() and
+                                    not self.opts.timid and
+                                    best_score == 1.0):
                                     identifiers[field_name] = match.info.album_id
                                     self._log.debug(
-                                        f'Perfect match found for {source}, '
-                                        f'automatically applying'
+                                        'Perfect match found for {}, '
+                                        'automatically applying'.format(source)
                                     )
                                 else:
-                                    # Ask for confirmation
                                     if ui.input_yn('Apply match (y/n)?', True):
                                         identifiers[field_name] = match.info.album_id
 
@@ -238,8 +235,8 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
-        # Override config from command line
-        self.config['timid'].set(opts.timid or self.config['timid'].get())
+        # Store opts for use in _collect_identifiers
+        self.opts = opts
 
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
