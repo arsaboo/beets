@@ -105,14 +105,13 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        error_sources = []
 
         for source in self.sources:
+            self._log.debug(f"Processing source: {source}")
             try:
                 field_name = self.SOURCE_ID_FIELDS[source]
                 existing_id = getattr(album_obj, field_name, None)
 
-                # First check existing ID
                 if existing_id:
                     self._log.debug(f'Found existing {field_name}: {existing_id}')
                     if self.config['timid'] or self.opts.timid:
@@ -122,39 +121,32 @@ class MetaImportPlugin(BeetsPlugin):
                         print_(f"  ID: {existing_id}")
                         if ui.input_yn('Use this match? (Y/n)', True):
                             identifiers[field_name] = existing_id
-                            continue
-                        print_(f"Searching {source} for new match...")
                     else:
                         identifiers[field_name] = existing_id
-                        continue
 
-                # No existing ID - try searching
-                plugin = self.source_plugins[source]
-                self._log.debug(f"Searching {source}...")
-                results = plugin._search_api("album", keywords=album, filters={"artist": artist})
+                else:
+                    # Search for new matches
+                    self._log.debug(f"Searching {source}...")
+                    plugin = self.source_plugins[source]
+                    results = plugin._search_api(
+                        "album", keywords=album, filters={"artist": artist}
+                    )
 
-                if results and len(results) > 0:
-                    # Process search results to find a match
-                    candidates = []
-                    for result in results:
-                        album_info = plugin.album_for_id(str(result["id"]))
+                    if results and len(results) > 0:
+                        album_info = plugin.album_for_id(str(results[0]["id"]))
                         if album_info:
-                            # Show match details before confirming
                             print_(f"\nFound {source} match:")
                             print_(f"  Artist: {album_info.artist}")
                             print_(f"  Album: {album_info.album}")
-
                             if not (self.config['timid'] or self.opts.timid) or \
                                ui.input_yn(f'Use this {source} match? (Y/n)', True):
                                 identifiers[field_name] = album_info.album_id
-                                break
 
             except Exception as e:
-                error_sources.append(source)
                 self._log.warning(f"Error searching {source}: {e}")
+                # Continue with next source instead of exiting
                 continue
 
-        # Return any identifiers we found, even if some sources failed
         return identifiers
 
     def _show_match_details(self, match, source):
