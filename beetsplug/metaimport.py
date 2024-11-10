@@ -32,12 +32,10 @@ class MetaImportPlugin(BeetsPlugin):
     def __init__(self):
         super().__init__()
 
-        self.config.add(
-            {
-                "sources": [],  # List of metadata sources
-                "timid": False,  # Whether to ask for confirmation on exact matches
-            }
-        )
+        self.config.add({
+            'sources': [],  # List of metadata sources
+            'timid': config['import']['timid'].get(),  # Inherit from import config
+        })
 
         # Initialize source plugins
         self.sources = []
@@ -201,19 +199,17 @@ class MetaImportPlugin(BeetsPlugin):
                             elif match and not isinstance(match, str):
                                 # Regular match selected
                                 field_name = self.SOURCE_ID_FIELDS[source]
-                                # Only require confirmation if timid mode is on
-                                if (
-                                    best_score == 1.0
-                                    and not config["import"]["timid"]
-                                ):
+                                # Always show match details in timid mode
+                                self._show_match_details(match, source)
+
+                                # Require confirmation in timid mode or for imperfect matches
+                                if (best_score == 1.0 and not self.config['timid'].get()):
                                     identifiers[field_name] = match.info.album_id
                                     self._log.debug(
                                         f'Perfect match found for {source}, '
                                         f'automatically applying'
                                     )
                                 else:
-                                    # Show match details and ask for confirmation
-                                    self._show_match_details(match, source)
                                     if ui.input_yn('Apply match (y/n)?', True):
                                         identifiers[field_name] = match.info.album_id
 
@@ -237,8 +233,8 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
-        # Use plugin config as base and override with command line option
-        timid = opts.timid or config["import"]["timid"].get()
+        # Override config from command line
+        self.config['timid'].set(opts.timid or self.config['timid'].get())
 
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
