@@ -112,15 +112,20 @@ class MetaImportPlugin(BeetsPlugin):
                 # Check if identifier already exists
                 field_name = self.SOURCE_ID_FIELDS[source]
                 existing_id = getattr(album_obj, field_name, None)
+
                 if existing_id:
                     self._log.debug(f'Using existing {field_name}: {existing_id}')
-                    # In timid mode, ask to use existing or search fresh
+                    # In timid mode, show match details and ask for confirmation
                     if self.config['timid'] or self.opts.timid:
-                        print_(f"\nFound existing {source} ID: {existing_id}")
-                        if ui.input_yn('Use existing ID (y/n)?', True):
-                            potential_identifiers[field_name] = existing_id
+                        print_(f"\nFound existing {source} match:")
+                        print_(f"  Artist: {artist}")
+                        print_(f"  Album: {album}")
+                        print_(f"  ID: {existing_id}")
+                        if ui.input_yn('Use this match (y/n)?', True):
+                            identifiers[field_name] = existing_id
                             continue
                         # User declined - fall through to fresh search
+                        print_("Searching for new match...")
                     else:
                         identifiers[field_name] = existing_id
                         continue
@@ -228,17 +233,22 @@ class MetaImportPlugin(BeetsPlugin):
                             break  # Done with this source
                     break  # No results found
 
+                # For new matches in timid mode, show details before storing
+                if potential_identifiers and (self.config['timid'] or self.opts.timid):
+                    print_(f"\nNew {source} match found:")
+                    print_(f"  Artist: {artist}")
+                    print_(f"  Album: {album}")
+                    for field, id_val in potential_identifiers.items():
+                        print_(f"  {field}: {id_val}")
+                    if ui.input_yn('Apply this match (y/n)?', True):
+                        identifiers.update(potential_identifiers)
+                        potential_identifiers = {}
+                    else:
+                        potential_identifiers = {}
+                        print_("Match rejected. Continuing search...")
+
             except Exception as e:
                 self._log.warning(f"Error getting {source} identifier: {str(e)}")
-
-        # If we have any potential identifiers (either from existing or new matches)
-        # in timid mode, ask for confirmation
-        if potential_identifiers and (self.config['timid'] or self.opts.timid):
-            print_("\nPotential identifiers found:")
-            for source, id_value in potential_identifiers.items():
-                print_(f"    {source}: {id_value}")
-            if ui.input_yn('Apply these identifiers (y/n)?', True):
-                identifiers.update(potential_identifiers)
 
         return identifiers
 
