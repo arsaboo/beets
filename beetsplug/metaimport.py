@@ -1,18 +1,15 @@
+from importlib import import_module
+
 from beets import autotag, config, importer, plugins, ui
 from beets.autotag import Distance, Proposal, Recommendation, hooks
 from beets.dbcore import types
 from beets.plugins import BeetsPlugin
 from beets.ui import colorize, print_
-from beets.ui.commands import (
-    PromptChoice,
-    abort_action,
-    choose_candidate,
-    manual_id,
-    manual_search,
-    import_cmd  # Import the import command
-)
+from beets.ui.commands import import_cmd  # Import the import command
+from beets.ui.commands import (PromptChoice, abort_action, choose_candidate,
+                               manual_id, manual_search)
 from beets.util import displayable_path
-from importlib import import_module
+
 
 class MetaImportPlugin(BeetsPlugin):
     def __init__(self):
@@ -20,6 +17,7 @@ class MetaImportPlugin(BeetsPlugin):
 
         self.config.add({
             'sources': [],  # List of metadata sources
+            'timid': False,  # Always ask for confirmation
         })
 
         # Initialize source plugins and ID fields
@@ -73,6 +71,13 @@ class MetaImportPlugin(BeetsPlugin):
         cmd = ui.Subcommand(
             "metaimport",
             help="collect identifiers from configured sources"
+        )
+        cmd.parser.add_option(
+            '-t',
+            '--timid',
+            dest='timid',
+            action='store_true',
+            help='always show candidates, even for exact matches',
         )
         cmd.func = self._command
         return [cmd]
@@ -220,6 +225,12 @@ class MetaImportPlugin(BeetsPlugin):
                     f"     * (#{track.index}) {track.title}"
                     f" ({track.length/60:.2f})"
                 )
+
+        # Ask for confirmation if in timid mode
+        if self.config['timid'] or self.opts.timid:
+            if not ui.input_yn('Apply match (y/n)?', True):
+                return False
+        return True
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
