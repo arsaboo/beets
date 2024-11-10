@@ -20,7 +20,6 @@ class MetaImportPlugin(BeetsPlugin):
 
         self.config.add({
             'sources': [],  # List of metadata sources
-            'timid': False,  # Default value for timid
         })
 
         # Initialize source plugins and ID fields
@@ -75,14 +74,6 @@ class MetaImportPlugin(BeetsPlugin):
             "metaimport",
             help="collect identifiers from configured sources"
         )
-        # Add timid flag directly to parser
-        cmd.parser.add_option(
-            '-t',
-            '--timid',
-            dest='timid',
-            action='store_true',
-            help='always confirm all matches'
-        )
         cmd.func = self._command
         return [cmd]
 
@@ -108,7 +99,7 @@ class MetaImportPlugin(BeetsPlugin):
     def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
-        # Read the timid flag from the configuration
+        # Read the timid flag from the global config
         timid = config["import"]["timid"].get(bool)
 
         for source in self.sources:
@@ -247,10 +238,6 @@ class MetaImportPlugin(BeetsPlugin):
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
             return
-
-        # Set timid mode if -t flag is used
-        if opts.timid:
-            config['import']['timid'] = True
 
         items = lib.items(ui.decargs(args))
         if not items:
