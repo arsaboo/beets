@@ -2,9 +2,8 @@ from beets import autotag, config, ui, plugins
 from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.dbcore import types
-from beets.autotag import hooks
+from beets.autotag import hooks, Proposal, Recommendation
 from beets.ui.commands import choose_candidate
-from beets.autotag import Recommendation
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -82,16 +81,24 @@ class MetaImportPlugin(BeetsPlugin):
                     for result in results:
                         album_info = plugin.album_for_id(str(result['id']))
                         if album_info:
-                            candidates.append(album_info)
+                            # Create an AlbumMatch for each candidate
+                            # Use empty mappings since we only need the album info
+                            candidates.append(autotag.AlbumMatch(
+                                distance=hooks.Distance(),
+                                info=album_info,
+                                mapping={},
+                                extra_items=[],
+                                extra_tracks=[],
+                            ))
 
                     if candidates:
-                        # Create proposal using beets' autotag
-                        prop = hooks.Proposal(candidates, Recommendation.strong)
+                        # Create proposal using beets' autotag module
+                        prop = Proposal(candidates, Recommendation.strong)
 
                         # Present candidates using beets' UI
                         match = choose_candidate(
                             prop.candidates,
-                            False, # album mode
+                            False,  # album mode
                             prop.recommendation,
                             artist,
                             album,
