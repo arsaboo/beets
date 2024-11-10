@@ -45,8 +45,8 @@ class MetaImportPlugin(BeetsPlugin):
             self.SOURCE_ID_FIELDS[source]: types.STRING
             for source in self.SUPPORTED_SOURCES.keys()
         }
-        self._log.debug(f'Adding fields: {field_types}')
-        self.add_album_field_types(field_types)
+        self._log.debug('Adding fields: {}', field_types)  # Fixed logging format
+        self.add_fields(field_types)  # Changed to correct method name
 
     def _init_source(self, source):
         """Initialize a single source plugin."""
