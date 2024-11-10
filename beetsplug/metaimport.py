@@ -1,9 +1,15 @@
-from beets import autotag, config, ui, plugins
+from beets import autotag, config, ui, plugins, importer
 from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.dbcore import types
 from beets.autotag import hooks, Proposal, Recommendation, Distance
-from beets.ui.commands import choose_candidate
+from beets.ui.commands import (
+    choose_candidate,
+    PromptChoice,
+    manual_search,
+    manual_id,
+    abort_action
+)
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
