@@ -25,6 +25,7 @@ class MetaImportPlugin(BeetsPlugin):
         self.source_plugins = {}
         self.SOURCE_ID_FIELDS = {}
         self.album_types = {}
+        self.opts = None  # Store command options
 
         if self.config["sources"].exists():
             configured_sources = self.config["sources"].as_str_seq()
@@ -149,8 +150,11 @@ class MetaImportPlugin(BeetsPlugin):
                                 rec = Recommendation.medium
 
                             # Force showing candidates in timid mode
-                            if self.config['timid'] or hasattr(self, 'opts') and self.opts.timid:
+                            if self.config['timid'] or self.opts.timid:
                                 rec = min(rec, Recommendation.medium)
+                                # Always ask for confirmation in timid mode
+                                if not ui.input_yn(f'Apply {source} match (y/n)?', True):
+                                    continue
 
                             # Present candidates
                             match = choose_candidate(
@@ -230,14 +234,13 @@ class MetaImportPlugin(BeetsPlugin):
                     f" ({track.length/60:.2f})"
                 )
 
-        # Ask for confirmation if in timid mode
-        if self.config['timid'] or self.opts.timid:
-            if not ui.input_yn('Apply match (y/n)?', True):
-                return False
         return True
 
     def _command(self, lib, opts, args):
         """Main command implementation."""
+        # Store options for use in other methods
+        self.opts = opts
+
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
             return
