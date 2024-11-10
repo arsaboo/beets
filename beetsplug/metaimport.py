@@ -35,6 +35,7 @@ class MetaImportPlugin(BeetsPlugin):
         self.config.add(
             {
                 "sources": [],  # List of metadata sources
+                "timid": False,  # Whether to ask for confirmation on exact matches
             }
         )
 
@@ -65,7 +66,16 @@ class MetaImportPlugin(BeetsPlugin):
 
     def commands(self):
         cmd = ui.Subcommand(
-            "metaimport", help="collect identifiers from configured sources"
+            "metaimport",
+            help="collect identifiers from configured sources"
+        )
+        # Add timid flag
+        cmd.parser.add_option(
+            '-t',
+            '--timid',
+            dest='timid',
+            action='store_true',
+            help='always confirm even perfect matches'
         )
         cmd.func = self._command
         return [cmd]
@@ -89,12 +99,20 @@ class MetaImportPlugin(BeetsPlugin):
         # Return 1.0 - distance to get a score where 1.0 is perfect
         return 1.0 - dist.distance
 
-    def _collect_identifiers(self, artist, album):
+    def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
 
         for source in self.sources:
             try:
+                # Check if identifier already exists
+                field_name = self.SOURCE_ID_FIELDS[source]
+                existing_id = getattr(album_obj, field_name, None)
+                if existing_id:
+                    self._log.debug(f'Using existing {field_name}: {existing_id}')
+                    identifiers[field_name] = existing_id
+                    continue
+
                 plugin = self.source_plugins[source]
 
                 # Main matching loop - allows retrying with manual search/ID
@@ -182,14 +200,22 @@ class MetaImportPlugin(BeetsPlugin):
                             elif match and not isinstance(match, str):
                                 # Regular match selected
                                 field_name = self.SOURCE_ID_FIELDS[source]
-                                identifiers[field_name] = match.info.album_id
-                                print_(f"\nDetails for {source} match:")
-                                if match.info.tracks:
-                                    for track in match.info.tracks:
-                                        print_(
-                                            f"     * (#{track.index}) {track.title}"
-                                            f" ({track.length/60:.2f})"
-                                        )
+                                # Only require confirmation if timid mode is on
+                                if (
+                                    best_score == 1.0
+                                    and not config["import"]["timid"]
+                                ):
+                                    identifiers[field_name] = match.info.album_id
+                                    self._log.debug(
+                                        f'Perfect match found for {source}, '
+                                        f'automatically applying'
+                                    )
+                                else:
+                                    # Show match details and ask for confirmation
+                                    self._show_match_details(match, source)
+                                    if ui.input_yn('Apply match (y/n)?', True):
+                                        identifiers[field_name] = match.info.album_id
+
                             break  # Done with this source
                     break  # No results found
 
@@ -198,8 +224,21 @@ class MetaImportPlugin(BeetsPlugin):
 
         return identifiers
 
+    def _show_match_details(self, match, source):
+        """Show detailed information about a match."""
+        print_(f"\nDetails for {source} match:")
+        if match.info.tracks:
+            for track in match.info.tracks:
+                print_(
+                    f"     * (#{track.index}) {track.title}"
+                    f" ({track.length/60:.2f})"
+                )
+
     def _command(self, lib, opts, args):
         """Main command implementation."""
+        # Update config from command line options
+        self.config["timid"] = opts.timid or self.config["timid"].get()
+
         if not self.sources:
             self._log.warning("No valid metadata sources configured")
             return
@@ -226,7 +265,7 @@ class MetaImportPlugin(BeetsPlugin):
             print_(ui.colorize('text', f' ({len(items)} items)'))
 
             # Collect identifiers
-            identifiers = self._collect_identifiers(albumartist, album_name)
+            identifiers = self._collect_identifiers(albumartist, album_name, items[0].get_album())
 
             if identifiers:
                 # Update the first item's album with the identifiers
