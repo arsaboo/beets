@@ -100,49 +100,53 @@ class MetaImportPlugin(BeetsPlugin):
                     for result in results:
                         album_info = plugin.album_for_id(str(result['id']))
                         if album_info:
-                            # Score the match
-                            score = self._score_match(album_info, artist, album)
-
-                            # Create distance object for display
-                            dist = Distance()
-                            dist.add('album', 1.0 - score)
-
-                            candidates.append(autotag.AlbumMatch(
-                                distance=dist,
+                            # Create album match
+                            match = autotag.AlbumMatch(
+                                distance=hooks.Distance(),
                                 info=album_info,
-                                mapping={},
+                                mapping={},  # We don't need mapping for ID collection
                                 extra_items=[],
                                 extra_tracks=[],
-                            ))
+                            )
+
+                            # Score the match using beets' built-in scoring
+                            score = self._score_match(album_info, artist, album)
+
+                            # Create distance object with the score
+                            match.distance.add('album', 1.0 - score)
+                            candidates.append(match)
 
                     if candidates:
                         # Sort candidates by score
                         candidates.sort(key=lambda c: c.distance)
 
-                        # Determine recommendation based on score
-                        rec = Recommendation.none
+                        # Get recommendation based on score
                         best_score = 1.0 - candidates[0].distance
+                        rec = Recommendation.none
                         if best_score > 0.8:
                             rec = Recommendation.strong
                         elif best_score > 0.5:
                             rec = Recommendation.medium
 
-                        # Create proposal
-                        prop = Proposal(candidates, rec)
-
                         # Present candidates using beets' UI
-                        # We need to provide all required arguments to choose_candidate
                         match = choose_candidate(
-                            candidates=prop.candidates,
+                            candidates=candidates,
                             singleton=False,
-                            rec=prop.recommendation,
+                            rec=rec,
                             cur_artist=artist,
                             cur_album=album,
-                            itemcount=len(candidates),
-                            choices=[]
+                            itemcount=len(album_info.tracks) if album_info else 0,
+                            choices=[],
                         )
 
                         if match and not isinstance(match, (str, dict)):
+                            # Show detailed info about the match
+                            print_(f"\nDetails for {source} match:")
+                            if match.info.tracks:
+                                for track in match.info.tracks:
+                                    print_(f"     * (#{track.index}) {track.title}"
+                                          f" ({track.length/60:.2f})")
+
                             field_name = self.SOURCE_ID_FIELDS[source]
                             identifiers[field_name] = match.info.album_id
                             self._log.debug(f'Found {field_name}: {match.info.album_id}')
