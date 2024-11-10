@@ -9,6 +9,7 @@ from beets.ui.commands import (
     choose_candidate,
     manual_id,
     manual_search,
+    import_cmd  # Import the import command
 )
 from beets.util import displayable_path
 from beetsplug.deezer import DeezerPlugin
@@ -65,17 +66,10 @@ class MetaImportPlugin(BeetsPlugin):
     def commands(self):
         cmd = ui.Subcommand(
             "metaimport",
-            help="collect identifiers from configured sources"
+            help="collect identifiers from configured sources",
+            parent=import_cmd.parser,  # Inherit options from import command
         )
-        # Add timid flag
-        cmd.parser.add_option(
-            '-t',
-            '--timid',
-            dest='timid',
-            action='store_true',
-            default=False,
-            help='always confirm even perfect matches'
-        )
+        # Remove the custom timid option here
         cmd.func = self._command
         return [cmd]
 
@@ -98,9 +92,11 @@ class MetaImportPlugin(BeetsPlugin):
         # Return 1.0 - distance to get a score where 1.0 is perfect
         return 1.0 - dist.distance
 
-    def _collect_identifiers(self, artist, album, album_obj, timid):
+    def _collect_identifiers(self, artist, album, album_obj):
         """Collect identifiers from all configured sources."""
         identifiers = {}
+        # Read the timid flag from the configuration
+        timid = config["import"]["timid"].get(bool)
 
         for source in self.sources:
             try:
@@ -261,7 +257,7 @@ class MetaImportPlugin(BeetsPlugin):
             print_(ui.colorize('text', f' ({len(items)} items)'))
 
             # Collect identifiers
-            identifiers = self._collect_identifiers(albumartist, album_name, items[0].get_album(), opts.timid)
+            identifiers = self._collect_identifiers(albumartist, album_name, items[0].get_album())
 
             if identifiers:
                 # Update the first item's album with the identifiers
