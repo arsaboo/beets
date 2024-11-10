@@ -19,16 +19,7 @@ from beetsplug.spotify import SpotifyPlugin
 
 
 class MetaImportPlugin(BeetsPlugin):
-    # Map sources to their corresponding field names
-    SOURCE_ID_FIELDS = {"spotify": "spotify_album_id", "deezer": "deezer_album_id"}
-
     SUPPORTED_SOURCES = {"spotify": SpotifyPlugin, "deezer": DeezerPlugin}
-
-    # Declare fields that will be added to the database
-    album_types = {
-        "spotify_album_id": types.STRING,
-        "deezer_album_id": types.STRING,
-    }
 
     def __init__(self):
         super().__init__()
@@ -38,9 +29,13 @@ class MetaImportPlugin(BeetsPlugin):
             'timid': False,  # Default value for timid
         })
 
-        # Initialize source plugins
+        # Initialize source plugins and ID fields
         self.sources = []
         self.source_plugins = {}
+        self.SOURCE_ID_FIELDS = {}  # Move to instance variable
+
+        # Dynamically build album_types from source plugins
+        self.album_types = {}
 
         if self.config["sources"].exists():
             configured_sources = self.config["sources"].as_str_seq()
@@ -53,13 +48,24 @@ class MetaImportPlugin(BeetsPlugin):
                     self._init_source(source)
 
     def _init_source(self, source):
-        """Initialize a single source plugin."""
+        """Initialize a single source plugin and its fields."""
         try:
             plugin_class = self.SUPPORTED_SOURCES[source]
             plugin = plugin_class()
+
+            # Get field name from plugin
+            field_name = f"{source}_album_id"  # Default format if not specified
+            if hasattr(plugin, 'album_id_field'):
+                field_name = plugin.album_id_field
+
+            # Add to our mappings
             self.source_plugins[source] = plugin
+            self.SOURCE_ID_FIELDS[source] = field_name
+            self.album_types[field_name] = types.STRING
             self.sources.append(source)
+
             self._log.debug(f"Successfully loaded source plugin: {source}")
+            self._log.debug(f"Using field name: {field_name}")
         except Exception as e:
             self._log.warning(f"Failed to initialize source {source}: {str(e)}")
 
