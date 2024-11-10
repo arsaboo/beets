@@ -113,7 +113,7 @@ class MetaImportPlugin(BeetsPlugin):
                 existing_id = getattr(album_obj, field_name, None)
 
                 if existing_id:
-                    self._log.debug(f'Found existing {field_name}: {existing_id}')
+                    self._log.debug(f'Using existing {field_name}: {existing_id}')
                     if self.config['timid'] or self.opts.timid:
                         print_(f"\nFound existing {source} match:")
                         print_(f"  Artist: {artist}")
@@ -121,30 +121,85 @@ class MetaImportPlugin(BeetsPlugin):
                         print_(f"  ID: {existing_id}")
                         if ui.input_yn('Use this match? (Y/n)', True):
                             identifiers[field_name] = existing_id
+                            continue
+                        print_(f"Searching {source} for new match...")
                     else:
                         identifiers[field_name] = existing_id
+                        continue
 
-                else:
-                    # Search for new matches
-                    self._log.debug(f"Searching {source}...")
-                    plugin = self.source_plugins[source]
-                    results = plugin._search_api(
-                        "album", keywords=album, filters={"artist": artist}
-                    )
+                plugin = self.source_plugins[source]
+                self._log.debug(f"Searching {source}...")
+                results = plugin._search_api(
+                    "album", keywords=album, filters={"artist": artist}
+                )
 
-                    if results and len(results) > 0:
-                        album_info = plugin.album_for_id(str(results[0]["id"]))
+                if results and len(results) > 0:
+                    candidates = []
+                    for result in results:
+                        album_info = plugin.album_for_id(str(result["id"]))
                         if album_info:
-                            print_(f"\nFound {source} match:")
-                            print_(f"  Artist: {album_info.artist}")
-                            print_(f"  Album: {album_info.album}")
-                            if not (self.config['timid'] or self.opts.timid) or \
-                               ui.input_yn(f'Use this {source} match? (Y/n)', True):
-                                identifiers[field_name] = album_info.album_id
+                            match = autotag.AlbumMatch(
+                                distance=hooks.Distance(),
+                                info=album_info,
+                                mapping={},
+                                extra_items=[],
+                                extra_tracks=[],
+                            )
+                            score = self._score_match(album_info, artist, album)
+                            match.distance.add("album", 1.0 - score)
+                            candidates.append(match)
+
+                    if candidates:
+                        candidates.sort(key=lambda c: c.distance)
+                        album_info = candidates[0].info
+
+                        # Show match details and confirm if in timid mode
+                        print_(f"\nFound {source} match:")
+                        print_(f"  Artist: {album_info.artist}")
+                        print_(f"  Album: {album_info.album}")
+
+                        if not (self.config['timid'] or self.opts.timid) or \
+                           ui.input_yn(f'Use this {source} match? (Y/n)', True):
+                            identifiers[field_name] = album_info.album_id
+                else:
+                    # No matches found - offer manual ID entry
+                    print_(f"\nNo matches found for {source}.")
+                    if ui.input_yn('Enter ID manually? (Y/n)', True):
+                        id_input = ui.input_("Enter ID: ").strip()
+                        if id_input:
+                            try:
+                                album_info = plugin.album_for_id(id_input)
+                                if album_info:
+                                    print_(f"\nFound {source} match:")
+                                    print_(f"  Artist: {album_info.artist}")
+                                    print_(f"  Album: {album_info.album}")
+                                    if ui.input_yn('Use this match? (Y/n)', True):
+                                        identifiers[field_name] = id_input
+                                    else:
+                                        print_("Invalid ID - no album found")
+                            except Exception as e:
+                                self._log.warning(f"Error validating ID: {e}")
 
             except Exception as e:
+                # Log the error but continue with next source
                 self._log.warning(f"Error searching {source}: {e}")
-                # Continue with next source instead of exiting
+                # Offer manual ID entry after error
+                print_(f"\nError searching {source}.")
+                if ui.input_yn('Enter ID manually? (Y/n)', True):
+                    id_input = ui.input_("Enter ID: ").strip()
+                    if id_input:
+                        try:
+                            album_info = plugin.album_for_id(id_input)
+                            if album_info:
+                                print_(f"\nFound {source} match:")
+                                print_(f"  Artist: {album_info.artist}")
+                                print_(f"  Album: {album_info.album}")
+                                if ui.input_yn('Use this match? (Y/n)', True):
+                                    identifiers[field_name] = id_input
+                            else:
+                                print_("Invalid ID - no album found")
+                        except Exception as e:
+                            self._log.warning(f"Error validating ID: {e}")
                 continue
 
         return identifiers
