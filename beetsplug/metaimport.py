@@ -128,7 +128,7 @@ class MetaImportPlugin(BeetsPlugin):
                         elif best_score > 0.5:
                             rec = Recommendation.medium
 
-                        # Present candidates using beets' UI
+                        # Present candidates using beets' UI with all standard options
                         match = choose_candidate(
                             candidates=candidates,
                             singleton=False,
@@ -136,7 +136,15 @@ class MetaImportPlugin(BeetsPlugin):
                             cur_artist=artist,
                             cur_album=album,
                             itemcount=len(album_info.tracks) if album_info else 0,
-                            choices=[],
+                            choices=[
+                                PromptChoice('s', 'Skip', importer.action.SKIP),
+                                PromptChoice('u', 'Use as-is', importer.action.ASIS),
+                                PromptChoice('t', 'as Tracks', importer.action.TRACKS),
+                                PromptChoice('g', 'Group albums', importer.action.ALBUMS),
+                                PromptChoice('e', 'Enter search', manual_search),
+                                PromptChoice('i', 'enter Id', manual_id),
+                                PromptChoice('b', 'aBort', abort_action),
+                            ]
                         )
 
                         if match and not isinstance(match, (str, dict)):
