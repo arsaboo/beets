@@ -3,6 +3,8 @@ from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.dbcore import types
 from beets.autotag import hooks
+from beets.ui.commands import choose_candidate
+from beets.autotag import Recommendation
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -78,48 +80,30 @@ class MetaImportPlugin(BeetsPlugin):
                 if results and len(results) > 0:
                     candidates = []
                     for result in results:
-                        # Get full album info from the source
                         album_info = plugin.album_for_id(str(result['id']))
                         if album_info:
                             candidates.append(album_info)
 
                     if candidates:
-                        # Use beets' built-in album distance calculation
-                        dist_album = candidates[0]
-                        min_dist = float('inf')
-                        for candidate in candidates:
-                            # Calculate similarity using title and artist
-                            dist = hooks.string_dist(album, candidate.album)
-                            dist += hooks.string_dist(artist, candidate.artist)
-                            if dist < min_dist:
-                                min_dist = dist
-                                dist_album = candidate
+                        # Create proposal using beets' autotag
+                        prop = hooks.Proposal(candidates, Recommendation.strong)
 
-                        # Ask for user confirmation if match isn't exact
-                        if min_dist > 0.0:
-                            # Show all candidates
-                            print_(colorize('text', f'\nCandidates from {source}:'))
-                            for i, candidate in enumerate(candidates, 1):
-                                print_(colorize('text',
-                                    f'  {i}. {candidate.artist} - {candidate.album}'))
+                        # Present candidates using beets' UI
+                        match = choose_candidate(
+                            prop.candidates,
+                            False, # album mode
+                            prop.recommendation,
+                            artist,
+                            album,
+                            itemcount=len(candidates),
+                            choices=[],
+                        )
 
-                            # Ask user to choose
-                            sel = ui.input_options(
-                                ('Choose candidate (n match, s skip): '),
-                                ('n', 's') + tuple(str(i) for i in range(1, len(candidates) + 1))
-                            )
-
-                            if sel == 'n':
-                                continue
-                            elif sel == 's':
-                                break
-                            else:
-                                dist_album = candidates[int(sel) - 1]
-
-                        # Store the identifier
-                        field_name = self.SOURCE_ID_FIELDS[source]
-                        identifiers[field_name] = dist_album.album_id
-                        self._log.debug(f'Found {field_name}: {dist_album.album_id}')
+                        if match:
+                            # Store the identifier if a match was chosen
+                            field_name = self.SOURCE_ID_FIELDS[source]
+                            identifiers[field_name] = match.info.album_id
+                            self._log.debug(f'Found {field_name}: {match.info.album_id}')
 
             except Exception as e:
                 self._log.warning(f'Error getting {source} identifier: {str(e)}')
