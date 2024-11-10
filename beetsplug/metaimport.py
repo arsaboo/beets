@@ -99,71 +99,90 @@ class MetaImportPlugin(BeetsPlugin):
         for source in self.sources:
             try:
                 plugin = self.source_plugins[source]
-                results = plugin._search_api('album', keywords=album, filters={'artist': artist})
 
-                if results and len(results) > 0:
-                    candidates = []
-                    for result in results:
-                        album_info = plugin.album_for_id(str(result['id']))
-                        if album_info:
-                            # Create album match
-                            match = autotag.AlbumMatch(
-                                distance=hooks.Distance(),
-                                info=album_info,
-                                mapping={},  # We don't need mapping for ID collection
-                                extra_items=[],
-                                extra_tracks=[],
+                # Main matching loop - allows retrying with manual search/ID
+                while True:
+                    results = plugin._search_api('album', keywords=album, filters={'artist': artist})
+
+                    if results and len(results) > 0:
+                        candidates = []
+                        for result in results:
+                            album_info = plugin.album_for_id(str(result['id']))
+                            if album_info:
+                                match = autotag.AlbumMatch(
+                                    distance=hooks.Distance(),
+                                    info=album_info,
+                                    mapping={},
+                                    extra_items=[],
+                                    extra_tracks=[],
+                                )
+                                score = self._score_match(album_info, artist, album)
+                                match.distance.add('album', 1.0 - score)
+                                candidates.append(match)
+
+                        if candidates:
+                            candidates.sort(key=lambda c: c.distance)
+                            best_score = 1.0 - candidates[0].distance
+                            rec = Recommendation.none
+                            if best_score > 0.8:
+                                rec = Recommendation.strong
+                            elif best_score > 0.5:
+                                rec = Recommendation.medium
+
+                            # Present candidates
+                            match = choose_candidate(
+                                candidates=candidates,
+                                singleton=False,
+                                rec=rec,
+                                cur_artist=artist,
+                                cur_album=album,
+                                itemcount=len(album_info.tracks) if album_info else 0,
+                                choices=[
+                                    PromptChoice('s', 'Skip', importer.action.SKIP),
+                                    PromptChoice('u', 'Use as-is', importer.action.ASIS),
+                                    PromptChoice('t', 'as Tracks', importer.action.TRACKS),
+                                    PromptChoice('g', 'Group albums', importer.action.ALBUMS),
+                                    PromptChoice('e', 'Enter search', manual_search),
+                                    PromptChoice('i', 'enter Id', manual_id),
+                                    PromptChoice('b', 'aBort', abort_action),
+                                ]
                             )
 
-                            # Score the match using beets' built-in scoring
-                            score = self._score_match(album_info, artist, album)
-
-                            # Create distance object with the score
-                            match.distance.add('album', 1.0 - score)
-                            candidates.append(match)
-
-                    if candidates:
-                        # Sort candidates by score
-                        candidates.sort(key=lambda c: c.distance)
-
-                        # Get recommendation based on score
-                        best_score = 1.0 - candidates[0].distance
-                        rec = Recommendation.none
-                        if best_score > 0.8:
-                            rec = Recommendation.strong
-                        elif best_score > 0.5:
-                            rec = Recommendation.medium
-
-                        # Present candidates using beets' UI with all standard options
-                        match = choose_candidate(
-                            candidates=candidates,
-                            singleton=False,
-                            rec=rec,
-                            cur_artist=artist,
-                            cur_album=album,
-                            itemcount=len(album_info.tracks) if album_info else 0,
-                            choices=[
-                                PromptChoice('s', 'Skip', importer.action.SKIP),
-                                PromptChoice('u', 'Use as-is', importer.action.ASIS),
-                                PromptChoice('t', 'as Tracks', importer.action.TRACKS),
-                                PromptChoice('g', 'Group albums', importer.action.ALBUMS),
-                                PromptChoice('e', 'Enter search', manual_search),
-                                PromptChoice('i', 'enter Id', manual_id),
-                                PromptChoice('b', 'aBort', abort_action),
-                            ]
-                        )
-
-                        if match and not isinstance(match, (str, dict)):
-                            # Show detailed info about the match
-                            print_(f"\nDetails for {source} match:")
-                            if match.info.tracks:
-                                for track in match.info.tracks:
-                                    print_(f"     * (#{track.index}) {track.title}"
-                                          f" ({track.length/60:.2f})")
-
-                            field_name = self.SOURCE_ID_FIELDS[source]
-                            identifiers[field_name] = match.info.album_id
-                            self._log.debug(f'Found {field_name}: {match.info.album_id}')
+                            # Handle choice callbacks
+                            if isinstance(match, PromptChoice):
+                                if match.callback == manual_id:
+                                    # Get ID from user
+                                    search_id = ui.input_('Enter ID:').strip()
+                                    album_info = plugin.album_for_id(search_id)
+                                    if album_info:
+                                        field_name = self.SOURCE_ID_FIELDS[source]
+                                        identifiers[field_name] = album_info.album_id
+                                        print_(f"\nDetails for {source} match:")
+                                        if album_info.tracks:
+                                            for track in album_info.tracks:
+                                                print_(f"     * (#{track.index}) {track.title}"
+                                                    f" ({track.length/60:.2f})")
+                                    break
+                                elif match.callback == manual_search:
+                                    # Get search terms from user
+                                    artist = ui.input_('Artist:').strip()
+                                    album = ui.input_('Album:').strip()
+                                    continue  # Retry search with new terms
+                                elif match.callback == abort_action:
+                                    raise importer.ImportAbortError()
+                                else:
+                                    break  # Skip or other action
+                            elif match and not isinstance(match, str):
+                                # Regular match selected
+                                field_name = self.SOURCE_ID_FIELDS[source]
+                                identifiers[field_name] = match.info.album_id
+                                print_(f"\nDetails for {source} match:")
+                                if match.info.tracks:
+                                    for track in match.info.tracks:
+                                        print_(f"     * (#{track.index}) {track.title}"
+                                              f" ({track.length/60:.2f})")
+                            break  # Done with this source
+                    break  # No results found
 
             except Exception as e:
                 self._log.warning(f'Error getting {source} identifier: {str(e)}')
