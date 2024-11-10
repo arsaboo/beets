@@ -3,6 +3,7 @@ from beets.plugins import BeetsPlugin
 from beets.ui import print_, colorize
 from beets.dbcore import types
 from beets.autotag import hooks, Proposal, Recommendation, Distance
+from beets.ui.commands import choose_candidate
 
 # Import supported plugins directly
 from beetsplug.spotify import SpotifyPlugin
@@ -130,17 +131,18 @@ class MetaImportPlugin(BeetsPlugin):
                         prop = Proposal(candidates, rec)
 
                         # Present candidates using beets' UI
+                        # We need to provide all required arguments to choose_candidate
                         match = choose_candidate(
-                            prop.candidates,
-                            False,
-                            prop.recommendation,
-                            artist,
-                            album,
+                            candidates=prop.candidates,
+                            singleton=False,
+                            rec=prop.recommendation,
+                            cur_artist=artist,
+                            cur_album=album,
                             itemcount=len(candidates),
-                            choices=[],
+                            choices=[]
                         )
 
-                        if match:
+                        if match and not isinstance(match, (str, dict)):
                             field_name = self.SOURCE_ID_FIELDS[source]
                             identifiers[field_name] = match.info.album_id
                             self._log.debug(f'Found {field_name}: {match.info.album_id}')
