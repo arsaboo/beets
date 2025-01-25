@@ -254,23 +254,82 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
     # Cached last.fm entity lookups.
 
+    def _try_variations(self, method, *args):
+        """Try different variations of the search terms to find a match on LastFM.
+        Returns the first successful match or None."""
+        variations = []
+
+        # Original search terms
+        variations.append(args)
+        self._log.debug('Trying original search terms: {}', args)
+
+        # For album searches, try with "soundtrack" variations
+        if method == LASTFM.get_album:
+            album_name = args[1]
+            soundtrack_variations = [
+                (args[0], f"{album_name} (Original Motion Picture Soundtrack)"),
+                (args[0], f"{album_name} (Original Soundtrack)"),
+                (args[0], f"{album_name} (OST)"),
+            ]
+            variations.extend(soundtrack_variations)
+            self._log.debug('Adding soundtrack variations: {}', soundtrack_variations)
+
+        # Try with "Various Artists"
+        if method in (LASTFM.get_album, LASTFM.get_artist):
+            va_name = config['va_name'].get(str)
+            if args[0] != va_name:
+                if method == LASTFM.get_album:
+                    va_variation = (va_name, args[1])
+                    variations.append(va_variation)
+                    self._log.debug('Adding VA album variation: {}', va_variation)
+                else:
+                    va_variation = (va_name,)
+                    variations.append(va_variation)
+                    self._log.debug('Adding VA artist variation: {}', va_variation)
+
+        self._log.debug('Will try {} variations: {}', len(variations), variations)
+
+        # Try each variation
+        for var_args in variations:
+            try:
+                self._log.debug('Attempting lookup with: {}', var_args)
+                result = method(*var_args)
+                if result:
+                    self._log.debug('Found match: {}', result)
+                    return result
+                self._log.debug('No match found for: {}', var_args)
+            except PYLAST_EXCEPTIONS as exc:
+                self._log.debug('LastFM lookup failed for {}: {}', var_args, exc)
+            except Exception as exc:
+                self._log.debug('Unexpected error for {}: {}', var_args, exc)
+
+        self._log.debug('No matches found after trying all variations')
+        return None
+
     def _last_lookup(self, entity, method, *args):
         """Get a genre based on the named entity using the callable `method`
-        whose arguments are given in the sequence `args`. The genre lookup
-        is cached based on the entity name and the arguments.
-
-        Before the lookup, each argument has the "-" Unicode character replaced
-        with its rough ASCII equivalents in order to return better results from
-        the Last.fm database.
-        """
-        # Shortcut if we're missing metadata.
+        whose arguments are given in the sequence `args`."""
         if any(not s for s in args):
+            self._log.debug('Skipping lookup due to missing metadata: {}', args)
             return None
 
         key = f"{entity}.{'-'.join(str(a) for a in args)}"
-        if key not in self._genre_cache:
-            args = [a.replace("\u2010", "-") for a in args]
-            self._genre_cache[key] = self.fetch_genre(method(*args))
+        self._log.debug('Looking up genres for {} with key: {}', entity, key)
+
+        if key in self._genre_cache:
+            self._log.debug('Cache hit for {}: {}', key, self._genre_cache[key])
+            return self._genre_cache[key]
+
+        args = [a.replace("\u2010", "-") for a in args]
+        result = self._try_variations(method, *args)
+
+        if result:
+            genres = self.fetch_genre(result)
+            self._log.debug('Found genres for {}: {}', key, genres)
+            self._genre_cache[key] = genres
+        else:
+            self._log.debug('No genres found for {}', key)
+            self._genre_cache[key] = None
 
         return self._genre_cache[key]
 
