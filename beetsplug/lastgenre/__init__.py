@@ -255,6 +255,20 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
     # Cached last.fm entity lookups.
 
+    def _strip_soundtrack_suffix(self, album_name: str) -> str:
+        """Remove common soundtrack suffixes from album name."""
+        suffixes = [
+            " (Original Motion Picture Soundtrack)",
+            " (Original Soundtrack)",
+            " (OST)",
+            " (Motion Picture Soundtrack)",
+            " (Soundtrack)",
+        ]
+        for suffix in suffixes:
+            if album_name.endswith(suffix):
+                return album_name[:-len(suffix)].strip()
+        return album_name
+
     def _try_variations(self, method, *args):
         """Try different variations of the search terms to find a match on LastFM.
         Returns the first successful match or None."""
@@ -269,19 +283,24 @@ class LastGenrePlugin(plugins.BeetsPlugin):
             album_name = args[1]
             va_name = config['va_name'].get(str)
 
-            # 1. Try original artist with various album name formats
-            if original_artist != va_name:
-                base_variations = [
-                    album_name,
-                    f"{album_name} (Original Motion Picture Soundtrack)",
-                    f"{album_name} (Original Soundtrack)",
-                    f"{album_name} (OST)",
-                ]
+            # First try without soundtrack suffix if present
+            base_name = self._strip_soundtrack_suffix(album_name)
+            base_variations = [base_name]  # Try stripped name first
 
+            # Only add soundtrack variations if they weren't already in the original name
+            if base_name == album_name:
+                base_variations.extend([
+                    f"{base_name} (Original Motion Picture Soundtrack)",
+                    f"{base_name} (Original Soundtrack)",
+                    f"{base_name} (OST)",
+                ])
+
+            # Try original artist first
+            if original_artist != va_name:
                 for album_var in base_variations:
                     variations.append((original_artist, album_var))
 
-            # 2. Try with "Various Artists" only if original artist is different
+            # Then try Various Artists
             if original_artist != va_name:
                 for album_var in base_variations:
                     variations.append((va_name, album_var))
