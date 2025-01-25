@@ -270,42 +270,44 @@ class LastGenrePlugin(plugins.BeetsPlugin):
         return album_name
 
     def _try_variations(self, method, *args):
-        """Try different variations of the search terms to find a match on LastFM.
-        Returns the first successful match or None."""
+        """Try different variations of the search terms to find a match on LastFM."""
         variations = []
-
-        # Original search terms
-        variations.append(args)
-        self._log.debug('Trying original search terms: {}', args)
 
         if method == LASTFM.get_album:
             original_artist = args[0]
             album_name = args[1]
             va_name = config['va_name'].get(str)
 
-            # First try without soundtrack suffix if present
+            # Get both original and stripped versions of album name
             base_name = self._strip_soundtrack_suffix(album_name)
-            base_variations = [base_name]  # Try stripped name first
+            album_variations = []
 
-            # Only add soundtrack variations if they weren't already in the original name
-            if base_name == album_name:
-                base_variations.extend([
+            # Always try both the original and stripped versions
+            if base_name != album_name:
+                album_variations.append(base_name)
+                album_variations.append(album_name)
+            else:
+                album_variations.append(album_name)
+                # Only add soundtrack variations if original didn't have them
+                album_variations.extend([
                     f"{base_name} (Original Motion Picture Soundtrack)",
                     f"{base_name} (Original Soundtrack)",
                     f"{base_name} (OST)",
                 ])
 
+            self._log.debug('Album name variations to try: {}', album_variations)
+
             # Try original artist first
             if original_artist != va_name:
-                for album_var in base_variations:
+                for album_var in album_variations:
                     variations.append((original_artist, album_var))
 
             # Then try Various Artists
             if original_artist != va_name:
-                for album_var in base_variations:
+                for album_var in album_variations:
                     variations.append((va_name, album_var))
 
-            self._log.debug('Will try album variations: {}', variations)
+            self._log.debug('Will try all variations: {}', variations)
 
         # For artist lookups
         elif method == LASTFM.get_artist:
