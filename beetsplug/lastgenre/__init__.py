@@ -261,27 +261,42 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
         # Original search terms
         variations.append(args)
+        self._log.debug('Trying original search terms: {}', args)
 
-        # For album searches, try with "soundtrack" variations
         if method == LASTFM.get_album:
+            original_artist = args[0]
             album_name = args[1]
-            soundtrack_variations = [
-                (args[0], f"{album_name} (Original Motion Picture Soundtrack)"),
-                (args[0], f"{album_name} (Original Soundtrack)"),
-                (args[0], f"{album_name} (OST)"),
-            ]
-            variations.extend(soundtrack_variations)
-
-        # Try with "Various Artists"
-        if method in (LASTFM.get_album, LASTFM.get_artist):
             va_name = config['va_name'].get(str)
-            if args[0] != va_name:
-                if method == LASTFM.get_album:
-                    va_variation = (va_name, args[1])
-                    variations.append(va_variation)
-                else:
-                    va_variation = (va_name,)
-                    variations.append(va_variation)
+
+            # 1. Try original artist with various album name formats
+            if original_artist != va_name:
+                base_variations = [
+                    album_name,
+                    f"{album_name} (Original Motion Picture Soundtrack)",
+                    f"{album_name} (Original Soundtrack)",
+                    f"{album_name} (OST)",
+                ]
+
+                for album_var in base_variations:
+                    variations.append((original_artist, album_var))
+
+            # 2. Try with "Various Artists" only if original artist is different
+            if original_artist != va_name:
+                for album_var in base_variations:
+                    variations.append((va_name, album_var))
+
+            self._log.debug('Will try album variations: {}', variations)
+
+        # For artist lookups
+        elif method == LASTFM.get_artist:
+            artist = args[0]
+            va_name = config['va_name'].get(str)
+
+            # Try original artist first, then Various Artists if different
+            if artist != va_name:
+                variations.append((va_name,))
+
+            self._log.debug('Will try artist variations: {}', variations)
 
         # Try each variation
         for var_args in variations:
@@ -290,14 +305,19 @@ class LastGenrePlugin(plugins.BeetsPlugin):
                 result = method(*var_args)
                 if result:
                     self._log.debug('Found match: {}', result)
-                    return result
-                self._log.debug('No match found for: {}', var_args)
+                    genres = self.fetch_genre(result)
+                    if genres:  # Only return if we actually found genres
+                        self._log.debug('Found genres: {}', genres)
+                        return result
+                    self._log.debug('No genres found for match: {}', result)
+                else:
+                    self._log.debug('No match found for: {}', var_args)
             except PYLAST_EXCEPTIONS as exc:
                 self._log.debug('LastFM lookup failed for {}: {}', var_args, exc)
             except Exception as exc:
                 self._log.debug('Unexpected error for {}: {}', var_args, exc)
 
-        self._log.debug('No matches found after trying all variations')
+        self._log.debug('No matches with genres found after trying all variations')
         return None
 
     def _last_lookup(self, entity, method, *args):
