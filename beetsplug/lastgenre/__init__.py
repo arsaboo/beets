@@ -104,6 +104,7 @@ class LastGenrePlugin(plugins.BeetsPlugin):
                 "separator": ", ",
                 "prefer_specific": False,
                 "title_case": True,
+                "stop_at_album": True,  # Stop searching after album lookup
             }
         )
         self.setup()
@@ -429,44 +430,42 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
         # Run through stages: track, album, artist,
         # album artist, or most popular track genre.
-        if (
-            isinstance(obj, library.Item)
-            and "track" in self.sources
-            and (new_genres := self.fetch_track_genre(obj))
-        ):
-            label = "track"
-        elif "album" in self.sources and (
-            new_genres := self.fetch_album_genre(obj)
-        ):
+        if "album" in self.sources and (new_genres := self.fetch_album_genre(obj)):
             label = "album"
-        elif "artist" in self.sources:
-            new_genres = None
-            if isinstance(obj, library.Item):
-                new_genres = self.fetch_artist_genre(obj)
-                label = "artist"
-            elif obj.albumartist != config["va_name"].as_str():
-                new_genres = self.fetch_album_artist_genre(obj)
-                label = "album artist"
-            else:
-                # For "Various Artists", pick the most popular track genre.
-                item_genres = []
-                for item in obj.items():
-                    item_genre = None
-                    if "track" in self.sources:
-                        item_genre = self.fetch_track_genre(item)
-                    if not item_genre:
-                        item_genre = self.fetch_artist_genre(item)
-                    if item_genre:
-                        item_genres += item_genre
-                if item_genres:
-                    most_popular, rank = plurality(item_genres)
-                    new_genres = [most_popular]
-                    label = "most popular track"
-                    self._log.debug(
-                        'Most popular track genre "{}" ({}) for VA album.',
-                        most_popular,
-                        rank,
-                    )
+        elif not self.config["stop_at_album"].get(bool):
+            # Only proceed to other sources if stop_at_album is False
+            if (isinstance(obj, library.Item)
+                and "track" in self.sources
+                and (new_genres := self.fetch_track_genre(obj))):
+                label = "track"
+            elif "artist" in self.sources:
+                new_genres = None
+                if isinstance(obj, library.Item):
+                    new_genres = self.fetch_artist_genre(obj)
+                    label = "artist"
+                elif obj.albumartist != config["va_name"].as_str():
+                    new_genres = self.fetch_album_artist_genre(obj)
+                    label = "album artist"
+                else:
+                    # For "Various Artists", pick the most popular track genre.
+                    item_genres = []
+                    for item in obj.items():
+                        item_genre = None
+                        if "track" in self.sources:
+                            item_genre = self.fetch_track_genre(item)
+                        if not item_genre:
+                            item_genre = self.fetch_artist_genre(item)
+                        if item_genre:
+                            item_genres += item_genre
+                    if item_genres:
+                        most_popular, rank = plurality(item_genres)
+                        new_genres = [most_popular]
+                        label = "most popular track"
+                        self._log.debug(
+                            'Most popular track genre "{}" ({}) for VA album.',
+                            most_popular,
+                            rank,
+                        )
 
         # Return with a combined or freshly fetched genre list.
         if new_genres:
