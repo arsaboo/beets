@@ -297,19 +297,13 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
             self._log.debug('Album name variations to try: {}', album_variations)
 
-            # Try original artist first
-            if original_artist != va_name:
+            # Add variations for both original artist and VA
+            for artist in [original_artist, va_name]:
                 for album_var in album_variations:
-                    variations.append((original_artist, album_var))
-
-            # Then try Various Artists
-            if original_artist != va_name:
-                for album_var in album_variations:
-                    variations.append((va_name, album_var))
+                    variations.append((artist, album_var))
 
             self._log.debug('Will try all variations: {}', variations)
 
-        # For artist lookups
         elif method == LASTFM.get_artist:
             artist = args[0]
             va_name = config['va_name'].get(str)
