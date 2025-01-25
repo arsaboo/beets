@@ -261,7 +261,6 @@ class LastGenrePlugin(plugins.BeetsPlugin):
 
         # Original search terms
         variations.append(args)
-        self._log.debug('Trying original search terms: {}', args)
 
         # For album searches, try with "soundtrack" variations
         if method == LASTFM.get_album:
@@ -272,7 +271,6 @@ class LastGenrePlugin(plugins.BeetsPlugin):
                 (args[0], f"{album_name} (OST)"),
             ]
             variations.extend(soundtrack_variations)
-            self._log.debug('Adding soundtrack variations: {}', soundtrack_variations)
 
         # Try with "Various Artists"
         if method in (LASTFM.get_album, LASTFM.get_artist):
@@ -281,13 +279,9 @@ class LastGenrePlugin(plugins.BeetsPlugin):
                 if method == LASTFM.get_album:
                     va_variation = (va_name, args[1])
                     variations.append(va_variation)
-                    self._log.debug('Adding VA album variation: {}', va_variation)
                 else:
                     va_variation = (va_name,)
                     variations.append(va_variation)
-                    self._log.debug('Adding VA artist variation: {}', va_variation)
-
-        self._log.debug('Will try {} variations: {}', len(variations), variations)
 
         # Try each variation
         for var_args in variations:
