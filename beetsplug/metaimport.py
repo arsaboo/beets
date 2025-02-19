@@ -1,6 +1,7 @@
 from beets import plugins, ui
 from beets.plugins import BeetsPlugin
 from collections import defaultdict
+import sys
 
 class MetaImportPlugin(BeetsPlugin):
     def __init__(self):
@@ -13,41 +14,55 @@ class MetaImportPlugin(BeetsPlugin):
             'write': True,  # Whether to write tags to files
         })
 
-        # Get configured metadata source plugins more defensively
+        # Initialize metadata source plugins
         self.meta_sources = {}
-        self._log.debug('Configured sources: {}', self.config['sources'].as_str_seq())
+        configured_sources = self.config['sources'].as_str_seq()
+        self._log.debug('Configured sources: {}', configured_sources)
 
-        try:
-            available_plugins = plugins.find_plugins()
-        except Exception as e:
-            self._log.error('Error finding plugins: {}', e)
-            available_plugins = {}
+        # Direct plugin mapping instead of using find_plugins()
+        plugin_mapping = {
+            'spotify': 'beetsplug.spotify',
+            'deezer': 'beetsplug.deezer'
+        }
 
-        for source in self.config['sources'].as_str_seq():
+        for source in configured_sources:
             self._log.debug('Loading source plugin: {}', source)
-            try:
-                if source in available_plugins:
-                    plugin = available_plugins[source]
-                    self._log.debug('Found plugin class: {}', plugin.__name__)
 
-                    # Try to get an instance of the plugin
-                    try:
-                        plugin_instance = plugin()
-                        if hasattr(plugin_instance, 'album_for_id'):
-                            self.meta_sources[source] = plugin_instance
-                            self._log.debug('Successfully registered {} plugin', source)
-                        else:
-                            self._log.warning(
-                                '{} plugin does not support album lookup', source
-                            )
-                    except Exception as e:
-                        self._log.error(
-                            'Error initializing {} plugin: {}', source, e
-                        )
+            try:
+                if source in plugin_mapping:
+                    # Import the module directly
+                    module_name = plugin_mapping[source]
+                    if module_name not in sys.modules:
+                        __import__(module_name)
+
+                    module = sys.modules[module_name]
+
+                    # Get the plugin class (SpotifyPlugin or DeezerPlugin)
+                    plugin_class = None
+                    for name in dir(module):
+                        if name.endswith('Plugin'):
+                            plugin_class = getattr(module, name)
+                            break
+
+                    if plugin_class:
+                        self._log.debug('Found plugin class: {}', plugin_class.__name__)
+                        try:
+                            plugin_instance = plugin_class()
+                            if hasattr(plugin_instance, 'album_for_id'):
+                                self.meta_sources[source] = plugin_instance
+                                self._log.debug('Successfully registered {} plugin', source)
+                            else:
+                                self._log.warning('{} plugin does not support album lookup', source)
+                        except Exception as e:
+                            self._log.error('Error initializing {} plugin: {} ({})',
+                                          source, str(e), type(e).__name__)
+                    else:
+                        self._log.warning('Could not find plugin class for {}', source)
                 else:
-                    self._log.warning('{} plugin not found', source)
+                    self._log.warning('{} plugin not supported', source)
             except Exception as e:
-                self._log.error('Error loading {} plugin: {}', source, e)
+                self._log.error('Error loading {} plugin: {} ({})',
+                              source, str(e), type(e).__name__)
 
         self._log.debug('Loaded {} source plugins: {}',
                        len(self.meta_sources),
