@@ -103,6 +103,15 @@ class MetaImportPlugin(BeetsPlugin):
                 search_query = f"{album.albumartist} {album.album}"
                 self._log.debug('Deezer search query: {}', search_query)
                 results = search_function('album', search_query)
+                # Deezer API returns a list directly
+                if isinstance(results, list):
+                    return results
+                # Handle case where results might be in 'data' field
+                elif isinstance(results, dict) and 'data' in results:
+                    return results['data']
+                else:
+                    self._log.debug('Unexpected Deezer response format: {}', results)
+                    return None
             else:
                 # Default search method (e.g. for Spotify)
                 results = search_function(
@@ -115,10 +124,8 @@ class MetaImportPlugin(BeetsPlugin):
             self._log.debug('Search failed with parameters, trying alternative: {}', e)
             # Fallback search methods
             try:
-                # Try with just the album name
                 return search_function(album.album)
             except TypeError:
-                # Try with the full object
                 return search_function(album)
         except Exception as e:
             self._log.error('Search failed: {}', e)
