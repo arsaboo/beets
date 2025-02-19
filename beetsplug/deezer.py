@@ -84,19 +84,29 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
         self._log.debug('Fetching album {} from Deezer', deezer_id)
         album_data = self.fetch_data(self.album_url + str(deezer_id))
-        if album_data is None or 'error' in album_data:
-            self._log.debug('Album not found: {}', deezer_id)
+
+        # Add detailed logging of the response
+        self._log.debug('Raw album data: {}', album_data)
+
+        if not album_data or 'error' in album_data:
+            self._log.debug('Album data invalid or contains error: {}', album_data)
             return None
 
-        # Extract artist information
+        if 'title' not in album_data:
+            self._log.debug('Album data missing required fields: {}', album_data)
+            return None
+
+        # Extract artist information with better error handling
         artist = None
         artist_id = None
 
-        if 'artist' in album_data:
+        if 'artist' in album_data and isinstance(album_data['artist'], dict):
             artist = album_data['artist'].get('name')
             artist_id = album_data['artist'].get('id')
+            self._log.debug('Found artist info: {} ({})', artist, artist_id)
         elif 'contributors' in album_data:
             artist, artist_id = self.get_artist(album_data['contributors'])
+            self._log.debug('Using contributor as artist: {} ({})', artist, artist_id)
 
         # Parse release date
         try:
@@ -109,17 +119,21 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
             self._log.debug('Invalid release date: {}', release_date)
             year, month, day = None, None, None
 
-        # Get tracks
+        # Get tracks with validation
         tracks = []
         medium_totals = collections.defaultdict(int)
         tracks_data = self.fetch_data(f"{self.album_url}{deezer_id}/tracks")
 
-        if tracks_data and 'data' in tracks_data:
+        if tracks_data and isinstance(tracks_data.get('data'), list):
             for i, track_data in enumerate(tracks_data['data'], start=1):
-                track = self._get_track(track_data)
-                track.index = i
-                medium_totals[track.medium] += 1
-                tracks.append(track)
+                try:
+                    track = self._get_track(track_data)
+                    track.index = i
+                    medium_totals[track.medium] += 1
+                    tracks.append(track)
+                except Exception as e:
+                    self._log.debug('Error processing track {}: {}', i, str(e))
+                    continue
 
             # Set medium_total for all tracks
             for track in tracks:
