@@ -91,47 +91,37 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _execute_search(self, source_name, search_function, album):
         """Execute the search using the appropriate method for each source."""
-        query_filters = {
-            'artist': album.albumartist,
-            'album': album.album,
-        }
-        self._log.debug('Search filters: {}', query_filters)
-
         try:
             if source_name == 'deezer':
-                # Use album name as primary search term
+                # Just search by album name for better results
                 search_query = album.album
                 self._log.debug('Deezer search query: {}', search_query)
 
-                try:
-                    # Call Deezer search
-                    results = search_function('album', query_filters, search_query)
-                    if not results:
-                        return []
-
-                    # Post-process results to match artist
-                    filtered = []
-                    album_artists = {a.strip().lower() for a in album.albumartist.split(',')}
-
-                    for result in results:
-                        try:
-                            artist_name = result.get('artist', {}).get('name', '').lower()
-                            if any(artist in artist_name for artist in album_artists):
-                                filtered.append(result)
-                        except (AttributeError, KeyError):
-                            continue
-
-                    self._log.debug('Found {} matching results', len(filtered))
-                    return filtered
-
-                except Exception as e:
-                    self._log.debug('Search processing error: {} ({})', str(e), type(e).__name__)
+                results = search_function('album', None, search_query)
+                if not results:
                     return []
+
+                # Filter results by artist match
+                filtered_results = []
+                album_artists = {a.strip().lower() for a in album.albumartist.split(',')}
+
+                for result in results:
+                    if not isinstance(result, dict):
+                        continue
+
+                    artist_name = result.get('artist', {}).get('name', '').lower()
+                    if any(artist.lower() in artist_name or artist_name in artist.lower()
+                          for artist in album_artists):
+                        filtered_results.append(result)
+
+                self._log.debug('Found {} matching results after filtering', len(filtered_results))
+                return filtered_results
+
             else:
                 # Default search method (e.g. for Spotify)
                 return search_function(
                     query_type='album',
-                    filters=query_filters,
+                    filters={'artist': album.albumartist, 'album': album.album},
                     keywords=album.album
                 )
 

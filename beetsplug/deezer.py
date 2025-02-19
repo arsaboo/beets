@@ -77,87 +77,52 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def album_for_id(self, album_id):
         """Fetch an album by its Deezer ID or URL and return an AlbumInfo object."""
-        deezer_id = self._get_id("album", album_id, self.id_regex)
-        if deezer_id is None:
-            self._log.debug('Invalid album ID: {}', album_id)
-            return None
-
-        self._log.debug('Fetching album {} from Deezer', deezer_id)
-        album_data = self.fetch_data(self.album_url + str(deezer_id))
-
-        # Add detailed logging of the response
-        self._log.debug('Raw album data: {}', album_data)
-
-        if not album_data or 'error' in album_data:
-            self._log.debug('Album data invalid or contains error: {}', album_data)
-            return None
-
-        if 'title' not in album_data:
-            self._log.debug('Album data missing required fields: {}', album_data)
-            return None
-
-        # Extract artist information with better error handling
-        artist = None
-        artist_id = None
-
-        if 'artist' in album_data and isinstance(album_data['artist'], dict):
-            artist = album_data['artist'].get('name')
-            artist_id = album_data['artist'].get('id')
-            self._log.debug('Found artist info: {} ({})', artist, artist_id)
-        elif 'contributors' in album_data:
-            artist, artist_id = self.get_artist(album_data['contributors'])
-            self._log.debug('Using contributor as artist: {} ({})', artist, artist_id)
-
-        # Parse release date
         try:
-            release_date = album_data.get('release_date', '')
-            date_parts = [int(p) for p in release_date.split('-')] if release_date else []
-            year = date_parts[0] if date_parts else None
-            month = date_parts[1] if len(date_parts) > 1 else None
-            day = date_parts[2] if len(date_parts) > 2 else None
-        except (ValueError, IndexError):
-            self._log.debug('Invalid release date: {}', release_date)
-            year, month, day = None, None, None
+            deezer_id = str(album_id)  # Ensure ID is a string
+            self._log.debug('Fetching album {} from Deezer', deezer_id)
 
-        # Get tracks with validation
-        tracks = []
-        medium_totals = collections.defaultdict(int)
-        tracks_data = self.fetch_data(f"{self.album_url}{deezer_id}/tracks")
+            album_data = self.fetch_data(self.album_url + deezer_id)
+            self._log.debug('Raw album data: {}', album_data)
 
-        if tracks_data and isinstance(tracks_data.get('data'), list):
-            for i, track_data in enumerate(tracks_data['data'], start=1):
-                try:
-                    track = self._get_track(track_data)
-                    track.index = i
-                    medium_totals[track.medium] += 1
-                    tracks.append(track)
-                except Exception as e:
-                    self._log.debug('Error processing track {}: {}', i, str(e))
-                    continue
+            if not album_data or 'error' in album_data:
+                return None
 
-            # Set medium_total for all tracks
-            for track in tracks:
-                track.medium_total = medium_totals[track.medium]
+            # Extract basic info
+            artist = album_data.get('artist', {}).get('name')
+            artist_id = album_data.get('artist', {}).get('id')
 
-        album_info = AlbumInfo(
-            album=album_data['title'],
-            album_id=deezer_id,
-            deezer_album_id=deezer_id,
-            artist=artist,
-            artist_id=artist_id,
-            tracks=tracks,
-            year=year,
-            month=month,
-            day=day,
-            label=album_data.get('label'),
-            mediums=max(medium_totals.keys()) if medium_totals else 1,
-            data_source=self.data_source,
-            data_url=album_data.get('link'),
-            cover_art_url=album_data.get('cover_xl'),
-        )
+            # Get tracks
+            tracks = []
+            medium_totals = collections.defaultdict(int)
+            tracks_data = self.fetch_data(f"{self.album_url}{deezer_id}/tracks")
 
-        self._log.debug('Created album info: {}', vars(album_info))
-        return album_info
+            if tracks_data and 'data' in tracks_data:
+                for i, track_data in enumerate(tracks_data['data'], start=1):
+                    try:
+                        track = self._get_track(track_data)
+                        track.index = i
+                        track.medium = 1  # Default to medium 1 if not specified
+                        medium_totals[track.medium] += 1
+                        tracks.append(track)
+                    except Exception as e:
+                        self._log.debug('Error processing track {}: {}', i, str(e))
+
+            # Create album info
+            return AlbumInfo(
+                album=album_data['title'],
+                album_id=deezer_id,
+                deezer_album_id=deezer_id,
+                artist=artist,
+                artist_id=artist_id,
+                tracks=tracks,
+                year=int(album_data['release_date'][:4]) if album_data.get('release_date') else None,
+                data_source=self.data_source,
+                data_url=album_data.get('link'),
+                cover_art_url=album_data.get('cover_xl')
+            )
+        except Exception as e:
+            self._log.error('Error creating album info: {} ({})', str(e), type(e).__name__)
+            return None
 
     def _get_track(self, track_data):
         """Convert a Deezer track object dict to a TrackInfo object.
@@ -263,18 +228,10 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         elif isinstance(keywords, (list, tuple)):
             keywords = ' '.join(str(k) for k in keywords)
 
-        # Build query string
-        if filters:
-            artist = filters.get('artist', '')
-            album = filters.get('album', '')
-            if artist and album:
-                query = f"{artist} {album}"
-            else:
-                query = keywords
-        else:
-            query = keywords
+        # Build query string - simplify to just use album name for better results
+        query = keywords
+        self._log.debug('Using simplified query: {}', query)
 
-        query = unidecode.unidecode(query.strip())
         if not query:
             return []
 
@@ -296,6 +253,7 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
                 return []
 
             results = data.get("data", [])
+            self._log.debug("Raw Deezer results: {}", results)
             self._log.debug("Found {} result(s) for '{}'", len(results), query)
             return results
 
