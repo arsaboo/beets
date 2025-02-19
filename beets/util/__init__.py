@@ -1143,3 +1143,12 @@ def get_temp_filename(
 def unique_list(elements: Iterable[T]) -> list[T]:
     """Return a list with unique elements in the original order."""
     return list(dict.fromkeys(elements))
+
+
+def cpu_count():
+    """Return the number of CPU cores on the system."""
+    try:
+        import multiprocessing
+        return multiprocessing.cpu_count()
+    except (ImportError, NotImplementedError):
+        return 1
