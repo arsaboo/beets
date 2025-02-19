@@ -91,42 +91,47 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _execute_search(self, source_name, search_function, album):
         """Execute the search using the appropriate method for each source."""
+        query_filters = {
+            'artist': album.albumartist,
+            'album': album.album,
+        }
+        self._log.debug('Search filters: {}', query_filters)
+
         try:
             if source_name == 'deezer':
-                # For Deezer, just search by album name
+                # Use album name as primary search term
                 search_query = album.album
                 self._log.debug('Deezer search query: {}', search_query)
 
                 try:
-                    results = search_function('album', search_query)
+                    # Call Deezer search
+                    results = search_function('album', query_filters, search_query)
                     if not results:
-                        self._log.debug('No results found')
                         return []
 
-                    # Filter results for matching artist
-                    filtered_results = []
+                    # Post-process results to match artist
+                    filtered = []
                     album_artists = {a.strip().lower() for a in album.albumartist.split(',')}
 
                     for result in results:
-                        if not isinstance(result, dict):
+                        try:
+                            artist_name = result.get('artist', {}).get('name', '').lower()
+                            if any(artist in artist_name for artist in album_artists):
+                                filtered.append(result)
+                        except (AttributeError, KeyError):
                             continue
 
-                        artist_name = result.get('artist', {}).get('name', '').lower()
-                        if any(artist in artist_name for artist in album_artists):
-                            filtered_results.append(result)
-
-                    self._log.debug('Found {} matching results after filtering', len(filtered_results))
-                    return filtered_results
+                    self._log.debug('Found {} matching results', len(filtered))
+                    return filtered
 
                 except Exception as e:
                     self._log.debug('Search processing error: {} ({})', str(e), type(e).__name__)
                     return []
-
             else:
                 # Default search method (e.g. for Spotify)
                 return search_function(
                     query_type='album',
-                    filters={'artist': album.albumartist, 'album': album.album},
+                    filters=query_filters,
                     keywords=album.album
                 )
 
