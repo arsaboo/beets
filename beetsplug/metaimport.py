@@ -105,10 +105,12 @@ class MetaImportPlugin(BeetsPlugin):
                 results = search_function('album', search_query)
                 # Deezer API returns a list directly
                 if isinstance(results, list):
-                    return results
-                # Handle case where results might be in 'data' field
-                elif isinstance(results, dict) and 'data' in results:
-                    return results['data']
+                    album_data = results[0] if results else None
+                    if album_data:
+                        return album_data
+                    else:
+                        self._log.debug('No Deezer results found.')
+                        return None
                 else:
                     self._log.debug('Unexpected Deezer response format: {}', results)
                     return None
