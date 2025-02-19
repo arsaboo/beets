@@ -1,5 +1,4 @@
-from beets import plugins
-from beets import ui
+from beets import plugins, ui
 from beets.plugins import BeetsPlugin
 from collections import defaultdict
 
@@ -14,25 +13,50 @@ class MetaImportPlugin(BeetsPlugin):
             'write': True,  # Whether to write tags to files
         })
 
-        # Get configured metadata source plugins
+        # Get configured metadata source plugins more defensively
         self.meta_sources = {}
         self._log.debug('Configured sources: {}', self.config['sources'].as_str_seq())
+
+        try:
+            available_plugins = plugins.find_plugins()
+        except Exception as e:
+            self._log.error('Error finding plugins: {}', e)
+            available_plugins = {}
+
         for source in self.config['sources'].as_str_seq():
             self._log.debug('Loading source plugin: {}', source)
-            if source in plugins.find_plugins():
-                plugin = plugins.find_plugins()[source]
-                self._log.debug('Found plugin: {} - {}', source, plugin.__class__.__name__)
-                if hasattr(plugin, 'track_for_id'):
-                    self.meta_sources[source] = plugin
-                    self._log.debug('Successfully registered {} plugin', source)
+            try:
+                if source in available_plugins:
+                    plugin = available_plugins[source]
+                    self._log.debug('Found plugin class: {}', plugin.__name__)
+
+                    # Try to get an instance of the plugin
+                    try:
+                        plugin_instance = plugin()
+                        if hasattr(plugin_instance, 'album_for_id'):
+                            self.meta_sources[source] = plugin_instance
+                            self._log.debug('Successfully registered {} plugin', source)
+                        else:
+                            self._log.warning(
+                                '{} plugin does not support album lookup', source
+                            )
+                    except Exception as e:
+                        self._log.error(
+                            'Error initializing {} plugin: {}', source, e
+                        )
                 else:
-                    self._log.warning(f'{source} plugin does not support track lookup')
-            else:
-                self._log.warning(f'{source} plugin not found')
+                    self._log.warning('{} plugin not found', source)
+            except Exception as e:
+                self._log.error('Error loading {} plugin: {}', source, e)
 
         self._log.debug('Loaded {} source plugins: {}',
                        len(self.meta_sources),
                        list(self.meta_sources.keys()))
+
+        if not self.meta_sources:
+            self._log.warning(
+                'No metadata source plugins loaded. Plugin will be inactive.'
+            )
 
     def commands(self):
         cmd = ui.Subcommand('metaimport',
@@ -46,7 +70,16 @@ class MetaImportPlugin(BeetsPlugin):
 
     def fetch_metadata(self, lib, query):
         """Process library albums and fetch missing metadata from configured sources."""
-        albums = lib.albums(query)
+        if not self.meta_sources:
+            self._log.warning('No metadata source plugins available. Aborting.')
+            return
+
+        try:
+            albums = lib.albums(query)
+        except Exception as e:
+            self._log.error('Error querying library: {}', e)
+            return
+
         self._log.info(f'Processing {len(albums)} albums...')
         self._log.debug('Query: {}', query)
 
