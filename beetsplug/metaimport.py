@@ -32,7 +32,7 @@ class MetaImportPlugin(BeetsPlugin):
                 if source in plugin_mapping:
                     # Import the module directly
                     module_name = plugin_mapping[source]
-                    if module_name not in sys.modules:
+                    if (module_name not in sys.modules):
                         __import__(module_name)
 
                     module = sys.modules[module_name]
@@ -83,6 +83,18 @@ class MetaImportPlugin(BeetsPlugin):
         cmd.func = func
         return [cmd]
 
+    def _get_search_function(self, plugin):
+        """Get the appropriate search function for the given plugin."""
+        if hasattr(plugin, '_search_api'):
+            return plugin._search_api
+        elif hasattr(plugin, 'search'):
+            return plugin.search
+        elif hasattr(plugin, 'search_albums'):
+            return plugin.search_albums
+        elif hasattr(plugin, 'search_album'):
+            return plugin.search_album
+        return None
+
     def fetch_metadata(self, lib, query):
         """Process library albums and fetch missing metadata from configured sources."""
         if not self.meta_sources:
@@ -123,17 +135,34 @@ class MetaImportPlugin(BeetsPlugin):
                 self._log.debug('Searching {} for album - Artist: {}, Album: {}',
                               source_name, album.albumartist, album.album)
                 try:
+                    search_function = self._get_search_function(source_plugin)
+                    if not search_function:
+                        self._log.warning(f'No search function found for {source_name}')
+                        continue
+
                     query_filters = {
                         'artist': album.albumartist,
                         'album': album.album,
                     }
                     self._log.debug('Search filters: {}', query_filters)
 
-                    results = source_plugin._search_api(
-                        query_type='album',
-                        filters=query_filters,
-                        keywords=album.album
-                    )
+                    # Handle different search function signatures
+                    try:
+                        if source_name == 'deezer':
+                            results = search_function('album', album.album)
+                        else:
+                            results = search_function(
+                                query_type='album',
+                                filters=query_filters,
+                                keywords=album.album
+                            )
+                    except TypeError:
+                        # Try alternative search method signatures
+                        try:
+                            results = search_function(album.album)
+                        except TypeError:
+                            results = search_function(album)
+
                     self._log.debug('Search returned {} results', len(results) if results else 0)
 
                     if results and len(results) > 0:
