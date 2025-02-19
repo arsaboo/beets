@@ -260,25 +260,27 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
+        # Handle input format
         if isinstance(keywords, dict):
-            # Handle case where keywords is passed as a dict
             keywords = keywords.get('album', '')
+        elif isinstance(keywords, (list, tuple)):
+            keywords = ' '.join(keywords)
 
-        query = self._construct_search_query(keywords=keywords, filters=filters)
+        query = self._construct_search_query(keywords=keywords)
         if not query:
-            return None
+            return []
 
         self._log.debug(f"Searching {self.data_source} for '{query}'")
         try:
             response = requests.get(
-                self.search_url + query_type,
+                f"{self.search_url}{query_type}",
                 params={"q": query},
                 timeout=10,
             )
             response.raise_for_status()
             data = response.json()
 
-            # Return the data array directly
+            # Return the data array
             results = data.get("data", [])
             self._log.debug(
                 "Found {} result(s) from {} for '{}'",
@@ -286,24 +288,10 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
                 self.data_source,
                 query,
             )
-            if not isinstance(results, list):
-                self._log.debug("Converting results to list")
-                results = [results] if results else []
-
             return results
 
-        except requests.exceptions.RequestException as e:
-            self._log.error(
-                "Error fetching data from {} API\n Error: {}",
-                self.data_source,
-                e,
-            )
-            return []
-        except ValueError as e:
-            self._log.error("Error parsing JSON response: {}", e)
-            return []
         except Exception as e:
-            self._log.error("Unexpected error: {} ({})", str(e), type(e).__name__)
+            self._log.error("Search failed: {} ({})", str(e), type(e).__name__)
             return []
 
     def deezerupdate(self, items, write):

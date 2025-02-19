@@ -91,54 +91,41 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _execute_search(self, source_name, search_function, album):
         """Execute the search using the appropriate method for each source."""
-        query_filters = {
-            'artist': album.albumartist,
-            'album': album.album,
-        }
-        self._log.debug('Search filters: {}', query_filters)
-
         try:
             if source_name == 'deezer':
-                # For Deezer, use simpler query format and handle raw data
+                # For Deezer, just search by album title
                 search_query = album.album
-                self._log.debug('Initial Deezer search query: {}', search_query)
-                try:
-                    response = search_function('album', search_query)
-                    self._log.debug('Raw Deezer response type: {}', type(response))
+                self._log.debug('Deezer search query: {}', search_query)
 
-                    # Convert response to list if needed
-                    if hasattr(response, 'get'):
-                        raw_results = response.get('data', [])
-                    else:
-                        raw_results = response if isinstance(response, list) else []
+                # Call search API
+                response = search_function('album', search_query)
+                self._log.debug('Deezer raw response type: {}', type(response))
 
-                    self._log.debug('Raw Deezer results count: {}', len(raw_results))
-
-                    # Filter results to match artist
+                # Filter results by artist
+                if response:
                     filtered_results = []
-                    for result in raw_results:
+                    album_artists = {a.strip().lower() for a in album.albumartist.split(',')}
+
+                    for result in response:
                         if isinstance(result, dict) and 'artist' in result:
                             artist_name = result['artist'].get('name', '').lower()
-                            album_artists = [a.strip().lower() for a in album.albumartist.split(',')]
                             if any(artist in artist_name for artist in album_artists):
                                 filtered_results.append(result)
 
-                    self._log.debug('Filtered Deezer results count: {}', len(filtered_results))
+                    self._log.debug('Found {} matching Deezer results', len(filtered_results))
                     return filtered_results
+                return []
 
-                except Exception as e:
-                    self._log.debug('Deezer search error: {} ({})', str(e), type(e).__name__)
-                    return None
             else:
                 # Default search method (e.g. for Spotify)
-                results = search_function(
+                return search_function(
                     query_type='album',
-                    filters=query_filters,
+                    filters={'artist': album.albumartist, 'album': album.album},
                     keywords=album.album
                 )
-                return results
+
         except Exception as e:
-            self._log.error('Search failed: {}', e)
+            self._log.error('Search failed: {} ({})', str(e), type(e).__name__)
             return None
 
     def fetch_metadata(self, lib, query):
