@@ -1,5 +1,5 @@
 from beets import plugins, ui
-from beets.plugins import BeetsPlugin
+from beets.plugins import BeetsPlugin, MetadataSourcePlugin
 from collections import defaultdict
 import sys
 
@@ -19,45 +19,35 @@ class MetaImportPlugin(BeetsPlugin):
         configured_sources = self.config['sources'].as_str_seq()
         self._log.debug('Configured sources: {}', configured_sources)
 
-        # Direct plugin mapping instead of using find_plugins()
-        plugin_mapping = {
-            'spotify': 'beetsplug.spotify',
-            'deezer': 'beetsplug.deezer'
+        # Plugin class mapping
+        plugin_classes = {
+            'spotify': ('beetsplug.spotify', 'SpotifyPlugin'),
+            'deezer': ('beetsplug.deezer', 'DeezerPlugin')
         }
 
         for source in configured_sources:
             self._log.debug('Loading source plugin: {}', source)
 
             try:
-                if source in plugin_mapping:
-                    # Import the module directly
-                    module_name = plugin_mapping[source]
-                    if (module_name not in sys.modules):
+                if source in plugin_classes:
+                    module_name, class_name = plugin_classes[source]
+                    if module_name not in sys.modules:
                         __import__(module_name)
 
                     module = sys.modules[module_name]
+                    plugin_class = getattr(module, class_name)
 
-                    # Get the plugin class (SpotifyPlugin or DeezerPlugin)
-                    plugin_class = None
-                    for name in dir(module):
-                        if name.endswith('Plugin'):
-                            plugin_class = getattr(module, name)
-                            break
-
-                    if plugin_class:
+                    if plugin_class and issubclass(plugin_class, MetadataSourcePlugin):
                         self._log.debug('Found plugin class: {}', plugin_class.__name__)
                         try:
                             plugin_instance = plugin_class()
-                            if hasattr(plugin_instance, 'album_for_id'):
-                                self.meta_sources[source] = plugin_instance
-                                self._log.debug('Successfully registered {} plugin', source)
-                            else:
-                                self._log.warning('{} plugin does not support album lookup', source)
+                            self.meta_sources[source] = plugin_instance
+                            self._log.debug('Successfully registered {} plugin', source)
                         except Exception as e:
                             self._log.error('Error initializing {} plugin: {} ({})',
                                           source, str(e), type(e).__name__)
                     else:
-                        self._log.warning('Could not find plugin class for {}', source)
+                        self._log.warning('{} plugin is not a MetadataSourcePlugin', source)
                 else:
                     self._log.warning('{} plugin not supported', source)
             except Exception as e:
@@ -85,28 +75,18 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _get_search_function(self, plugin):
         """Get the appropriate search function for the given plugin."""
-        # First check direct search methods
-        if hasattr(plugin, '_search_api'):
-            self._log.debug('Using _search_api method')
-            return plugin._search_api
-        elif hasattr(plugin, '_search'):
-            self._log.debug('Using _search method')
-            return plugin._search
-        elif hasattr(plugin, 'search'):
-            self._log.debug('Using search method')
-            return plugin.search
-        elif hasattr(plugin, 'search_albums'):
-            self._log.debug('Using search_albums method')
-            return plugin.search_albums
-        elif hasattr(plugin, 'search_album'):
-            self._log.debug('Using search_album method')
-            return plugin.search_album
+        if isinstance(plugin, MetadataSourcePlugin):
+            if hasattr(plugin, '_search_api'):
+                self._log.debug('Using _search_api method')
+                return plugin._search_api
+            elif hasattr(plugin, 'search'):
+                self._log.debug('Using search method')
+                return plugin.search
+            elif hasattr(plugin, 'search_album'):
+                self._log.debug('Using search_album method')
+                return plugin.search_album
 
-        # As fallback, check if plugin is a MetadataSourcePlugin
-        if isinstance(plugin, plugins.MetadataSourcePlugin):
-            self._log.debug('Using MetadataSourcePlugin search')
-            return plugin._search_api
-
+        self._log.debug('No valid search method found for plugin')
         return None
 
     def _execute_search(self, source_name, search_function, album):
