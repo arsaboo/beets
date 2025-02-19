@@ -222,15 +222,15 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
-        # Handle input parameters
+        # Handle input parameters and build query string
         if isinstance(keywords, dict):
             keywords = keywords.get('album', '')
         elif isinstance(keywords, (list, tuple)):
             keywords = ' '.join(str(k) for k in keywords)
 
-        # Build query string - simplify to just use album name for better results
-        query = keywords
-        self._log.debug('Using simplified query: {}', query)
+        # Clean and prepare query
+        query = keywords.strip()
+        self._log.debug('Using search query: {}', query)
 
         if not query:
             return []
@@ -238,25 +238,33 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         # Make API request
         try:
             url = f"{self.search_url}{query_type}"
-            self._log.debug(f"Searching {self.data_source} at {url} with query '{query}'")
+            params = {"q": query}
+            self._log.debug('Searching Deezer at {} with params {}', url, params)
 
-            response = requests.get(
-                url,
-                params={"q": query},
-                timeout=10
-            )
+            response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
 
             data = response.json()
-            if "error" in data:
+            if isinstance(data, dict) and "error" in data:
                 self._log.debug("Deezer API error: {}", data["error"])
                 return []
 
-            results = data.get("data", [])
-            self._log.debug("Raw Deezer results: {}", results)
-            self._log.debug("Found {} result(s) for '{}'", len(results), query)
+            # Extract results array from response
+            if isinstance(data, dict) and "data" in data:
+                results = data["data"]
+            else:
+                self._log.debug("Unexpected response format: {}", data)
+                return []
+
+            self._log.debug("Found {} result(s)", len(results))
             return results
 
+        except requests.exceptions.RequestException as e:
+            self._log.debug("Network error: {} ({})", str(e), type(e).__name__)
+            return []
+        except ValueError as e:
+            self._log.debug("JSON decode error: {} ({})", str(e), type(e).__name__)
+            return []
         except Exception as e:
             self._log.debug("Search error: {} ({})", str(e), type(e).__name__)
             return []
