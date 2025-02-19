@@ -260,6 +260,10 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
+        if isinstance(keywords, dict):
+            # Handle case where keywords is passed as a dict
+            keywords = keywords.get('album', '')
+
         query = self._construct_search_query(keywords=keywords, filters=filters)
         if not query:
             return None
@@ -282,6 +286,10 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
                 self.data_source,
                 query,
             )
+            if not isinstance(results, list):
+                self._log.debug("Converting results to list")
+                results = [results] if results else []
+
             return results
 
         except requests.exceptions.RequestException as e:
@@ -290,6 +298,12 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
                 self.data_source,
                 e,
             )
+            return []
+        except ValueError as e:
+            self._log.error("Error parsing JSON response: {}", e)
+            return []
+        except Exception as e:
+            self._log.error("Unexpected error: {} ({})", str(e), type(e).__name__)
             return []
 
     def deezerupdate(self, items, write):
