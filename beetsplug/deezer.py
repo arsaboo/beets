@@ -76,91 +76,74 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         return data
 
     def album_for_id(self, album_id):
-        """Fetch an album by its Deezer ID or URL and return an
-        AlbumInfo object or None if the album is not found.
-
-        :param album_id: Deezer ID or URL for the album.
-        :type album_id: str
-        :return: AlbumInfo object for album.
-        :rtype: beets.autotag.hooks.AlbumInfo or None
-        """
+        """Fetch an album by its Deezer ID or URL and return an AlbumInfo object."""
         deezer_id = self._get_id("album", album_id, self.id_regex)
         if deezer_id is None:
+            self._log.debug('Invalid album ID: {}', album_id)
             return None
-        album_data = self.fetch_data(self.album_url + deezer_id)
-        if album_data is None:
-            return None
-        contributors = album_data.get("contributors")
-        if contributors is not None:
-            artist, artist_id = self.get_artist(contributors)
-        else:
-            artist, artist_id = None, None
 
-        release_date = album_data["release_date"]
-        date_parts = [int(part) for part in release_date.split("-")]
-        num_date_parts = len(date_parts)
-
-        if num_date_parts == 3:
-            year, month, day = date_parts
-        elif num_date_parts == 2:
-            year, month = date_parts
-            day = None
-        elif num_date_parts == 1:
-            year = date_parts[0]
-            month = None
-            day = None
-        else:
-            raise ui.UserError(
-                f"Invalid `release_date` returned by {self.data_source} API: "
-                f"{release_date!r}"
-            )
-        tracks_obj = self.fetch_data(self.album_url + deezer_id + "/tracks")
-        if tracks_obj is None:
+        self._log.debug('Fetching album {} from Deezer', deezer_id)
+        album_data = self.fetch_data(self.album_url + str(deezer_id))
+        if album_data is None or 'error' in album_data:
+            self._log.debug('Album not found: {}', deezer_id)
             return None
+
+        # Extract artist information
+        artist = None
+        artist_id = None
+
+        if 'artist' in album_data:
+            artist = album_data['artist'].get('name')
+            artist_id = album_data['artist'].get('id')
+        elif 'contributors' in album_data:
+            artist, artist_id = self.get_artist(album_data['contributors'])
+
+        # Parse release date
         try:
-            tracks_data = tracks_obj["data"]
-        except KeyError:
-            self._log.debug("Error fetching album tracks for {}", deezer_id)
-            tracks_data = None
-        if not tracks_data:
-            return None
-        while "next" in tracks_obj:
-            tracks_obj = requests.get(
-                tracks_obj["next"],
-                timeout=10,
-            ).json()
-            tracks_data.extend(tracks_obj["data"])
+            release_date = album_data.get('release_date', '')
+            date_parts = [int(p) for p in release_date.split('-')] if release_date else []
+            year = date_parts[0] if date_parts else None
+            month = date_parts[1] if len(date_parts) > 1 else None
+            day = date_parts[2] if len(date_parts) > 2 else None
+        except (ValueError, IndexError):
+            self._log.debug('Invalid release date: {}', release_date)
+            year, month, day = None, None, None
 
+        # Get tracks
         tracks = []
         medium_totals = collections.defaultdict(int)
-        for i, track_data in enumerate(tracks_data, start=1):
-            track = self._get_track(track_data)
-            track.index = i
-            medium_totals[track.medium] += 1
-            tracks.append(track)
-        for track in tracks:
-            track.medium_total = medium_totals[track.medium]
+        tracks_data = self.fetch_data(f"{self.album_url}{deezer_id}/tracks")
 
-        return AlbumInfo(
-            album=album_data["title"],
+        if tracks_data and 'data' in tracks_data:
+            for i, track_data in enumerate(tracks_data['data'], start=1):
+                track = self._get_track(track_data)
+                track.index = i
+                medium_totals[track.medium] += 1
+                tracks.append(track)
+
+            # Set medium_total for all tracks
+            for track in tracks:
+                track.medium_total = medium_totals[track.medium]
+
+        album_info = AlbumInfo(
+            album=album_data['title'],
             album_id=deezer_id,
             deezer_album_id=deezer_id,
             artist=artist,
-            artist_credit=self.get_artist([album_data["artist"]])[0],
             artist_id=artist_id,
             tracks=tracks,
-            albumtype=album_data["record_type"],
-            va=len(album_data["contributors"]) == 1
-            and artist.lower() == "various artists",
             year=year,
             month=month,
             day=day,
-            label=album_data["label"],
-            mediums=max(medium_totals.keys()),
+            label=album_data.get('label'),
+            mediums=max(medium_totals.keys()) if medium_totals else 1,
             data_source=self.data_source,
-            data_url=album_data["link"],
-            cover_art_url=album_data.get("cover_xl"),
+            data_url=album_data.get('link'),
+            cover_art_url=album_data.get('cover_xl'),
         )
+
+        self._log.debug('Created album info: {}', vars(album_info))
+        return album_info
 
     def _get_track(self, track_data):
         """Convert a Deezer track object dict to a TrackInfo object.
