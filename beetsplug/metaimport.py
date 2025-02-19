@@ -85,14 +85,28 @@ class MetaImportPlugin(BeetsPlugin):
 
     def _get_search_function(self, plugin):
         """Get the appropriate search function for the given plugin."""
-        if isinstance(plugin, plugins.MetadataSourcePlugin):
+        # First check direct search methods
+        if hasattr(plugin, '_search_api'):
+            self._log.debug('Using _search_api method')
             return plugin._search_api
+        elif hasattr(plugin, '_search'):
+            self._log.debug('Using _search method')
+            return plugin._search
         elif hasattr(plugin, 'search'):
+            self._log.debug('Using search method')
             return plugin.search
         elif hasattr(plugin, 'search_albums'):
+            self._log.debug('Using search_albums method')
             return plugin.search_albums
         elif hasattr(plugin, 'search_album'):
+            self._log.debug('Using search_album method')
             return plugin.search_album
+
+        # As fallback, check if plugin is a MetadataSourcePlugin
+        if isinstance(plugin, plugins.MetadataSourcePlugin):
+            self._log.debug('Using MetadataSourcePlugin search')
+            return plugin._search_api
+
         return None
 
     def _execute_search(self, source_name, search_function, album):
@@ -105,8 +119,10 @@ class MetaImportPlugin(BeetsPlugin):
 
         try:
             if source_name == 'deezer':
-                # Deezer expects different parameters
-                results = search_function('album', album.album)
+                # For Deezer, construct search string combining artist and album
+                search_query = f"{album.albumartist} {album.album}"
+                self._log.debug('Deezer search query: {}', search_query)
+                results = search_function('album', search_query)
             else:
                 # Default search method (e.g. for Spotify)
                 results = search_function(
@@ -119,8 +135,10 @@ class MetaImportPlugin(BeetsPlugin):
             self._log.debug('Search failed with parameters, trying alternative: {}', e)
             # Fallback search methods
             try:
+                # Try with just the album name
                 return search_function(album.album)
             except TypeError:
+                # Try with the full object
                 return search_function(album)
         except Exception as e:
             self._log.error('Search failed: {}', e)
