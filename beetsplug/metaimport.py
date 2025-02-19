@@ -105,9 +105,8 @@ class MetaImportPlugin(BeetsPlugin):
                 results = search_function('album', search_query)
                 # Deezer API returns a list directly
                 if isinstance(results, list):
-                    album_data = results[0] if results else None
-                    if album_data:
-                        return album_data
+                    if results:
+                        return results[0]  # Return the first album
                     else:
                         self._log.debug('No Deezer results found.')
                         return None
