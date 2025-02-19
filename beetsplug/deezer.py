@@ -259,24 +259,11 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
         return unidecode.unidecode(query)
 
     def _search_api(self, query_type, filters=None, keywords=""):
-        """Query the Deezer Search API for the specified ``keywords``, applying
-        the provided ``filters``.
-
-        :param query_type: The Deezer Search API method to use. Valid types
-            are: 'album', 'artist', 'history', 'playlist', 'podcast',
-            'radio', 'track', 'user', and 'track'.
-        :type query_type: str
-        :param filters: (Optional) Field filters to apply.
-        :type filters: dict
-        :param keywords: (Optional) Query keywords to use.
-        :type keywords: str
-        :return: JSON data for the class:`Response <Response>` object or None
-            if no search results are returned.
-        :rtype: dict or None
-        """
+        """Query the Deezer Search API."""
         query = self._construct_search_query(keywords=keywords, filters=filters)
         if not query:
             return None
+
         self._log.debug(f"Searching {self.data_source} for '{query}'")
         try:
             response = requests.get(
@@ -285,21 +272,25 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
                 timeout=10,
             )
             response.raise_for_status()
+            data = response.json()
+
+            # Return the data array directly
+            results = data.get("data", [])
+            self._log.debug(
+                "Found {} result(s) from {} for '{}'",
+                len(results),
+                self.data_source,
+                query,
+            )
+            return results
+
         except requests.exceptions.RequestException as e:
             self._log.error(
                 "Error fetching data from {} API\n Error: {}",
                 self.data_source,
                 e,
             )
-            return None
-        response_data = response.json().get("data", [])
-        self._log.debug(
-            "Found {} result(s) from {} for '{}'",
-            len(response_data),
-            self.data_source,
-            query,
-        )
-        return response_data
+            return []
 
     def deezerupdate(self, items, write):
         """Obtain rank information from Deezer."""

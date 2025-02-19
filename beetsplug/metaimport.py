@@ -99,17 +99,20 @@ class MetaImportPlugin(BeetsPlugin):
 
         try:
             if source_name == 'deezer':
-                # For Deezer, use simpler query format
+                # For Deezer, use simpler query format and handle raw data
                 search_query = album.album
                 self._log.debug('Initial Deezer search query: {}', search_query)
-
                 try:
-                    # Call Deezer search with correct format
-                    raw_results = search_function('album', search_query)
-                    self._log.debug('Raw Deezer search results: {}', raw_results)
+                    response = search_function('album', search_query)
+                    self._log.debug('Raw Deezer response type: {}', type(response))
 
-                    if not raw_results:
-                        return None
+                    # Convert response to list if needed
+                    if hasattr(response, 'get'):
+                        raw_results = response.get('data', [])
+                    else:
+                        raw_results = response if isinstance(response, list) else []
+
+                    self._log.debug('Raw Deezer results count: {}', len(raw_results))
 
                     # Filter results to match artist
                     filtered_results = []
@@ -120,11 +123,10 @@ class MetaImportPlugin(BeetsPlugin):
                             if any(artist in artist_name for artist in album_artists):
                                 filtered_results.append(result)
 
-                    self._log.debug('Filtered {} Deezer results: {}',
-                                  len(filtered_results), filtered_results)
+                    self._log.debug('Filtered Deezer results count: {}', len(filtered_results))
                     return filtered_results
 
-                except (AttributeError, TypeError) as e:
+                except Exception as e:
                     self._log.debug('Deezer search error: {} ({})', str(e), type(e).__name__)
                     return None
             else:
