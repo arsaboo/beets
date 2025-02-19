@@ -93,28 +93,34 @@ class MetaImportPlugin(BeetsPlugin):
         """Execute the search using the appropriate method for each source."""
         try:
             if source_name == 'deezer':
-                # For Deezer, just search by album title
+                # For Deezer, just search by album name
                 search_query = album.album
                 self._log.debug('Deezer search query: {}', search_query)
 
-                # Call search API
-                response = search_function('album', search_query)
-                self._log.debug('Deezer raw response type: {}', type(response))
+                try:
+                    results = search_function('album', search_query)
+                    if not results:
+                        self._log.debug('No results found')
+                        return []
 
-                # Filter results by artist
-                if response:
+                    # Filter results for matching artist
                     filtered_results = []
                     album_artists = {a.strip().lower() for a in album.albumartist.split(',')}
 
-                    for result in response:
-                        if isinstance(result, dict) and 'artist' in result:
-                            artist_name = result['artist'].get('name', '').lower()
-                            if any(artist in artist_name for artist in album_artists):
-                                filtered_results.append(result)
+                    for result in results:
+                        if not isinstance(result, dict):
+                            continue
 
-                    self._log.debug('Found {} matching Deezer results', len(filtered_results))
+                        artist_name = result.get('artist', {}).get('name', '').lower()
+                        if any(artist in artist_name for artist in album_artists):
+                            filtered_results.append(result)
+
+                    self._log.debug('Found {} matching results after filtering', len(filtered_results))
                     return filtered_results
-                return []
+
+                except Exception as e:
+                    self._log.debug('Search processing error: {} ({})', str(e), type(e).__name__)
+                    return []
 
             else:
                 # Default search method (e.g. for Spotify)

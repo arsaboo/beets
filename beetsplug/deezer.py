@@ -260,27 +260,33 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
-        # Handle input format
+        # Handle different input formats
         if isinstance(keywords, dict):
             keywords = keywords.get('album', '')
         elif isinstance(keywords, (list, tuple)):
             keywords = ' '.join(keywords)
 
-        query = self._construct_search_query(keywords=keywords)
+        # Clean up and encode query
+        query = keywords.strip()
         if not query:
             return []
 
-        self._log.debug(f"Searching {self.data_source} for '{query}'")
         try:
+            url = f"{self.search_url}{query_type}"
+            self._log.debug(f"Searching {self.data_source} at {url} with query '{query}'")
+
             response = requests.get(
-                f"{self.search_url}{query_type}",
+                url,
                 params={"q": query},
                 timeout=10,
             )
             response.raise_for_status()
-            data = response.json()
 
-            # Return the data array
+            data = response.json()
+            if "error" in data:
+                self._log.debug("Deezer API error: {}", data["error"])
+                return []
+
             results = data.get("data", [])
             self._log.debug(
                 "Found {} result(s) from {} for '{}'",
@@ -290,8 +296,14 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
             )
             return results
 
+        except requests.exceptions.RequestException as e:
+            self._log.debug("Network error: {} ({})", str(e), type(e).__name__)
+            return []
+        except ValueError as e:
+            self._log.debug("JSON decode error: {} ({})", str(e), type(e).__name__)
+            return []
         except Exception as e:
-            self._log.error("Search failed: {} ({})", str(e), type(e).__name__)
+            self._log.debug("Unexpected error: {} ({})", str(e), type(e).__name__)
             return []
 
     def deezerupdate(self, items, write):
