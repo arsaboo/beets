@@ -67,8 +67,16 @@ class MetaImportPlugin(BeetsPlugin):
         cmd = ui.Subcommand('metaimport',
             help='fetch track metadata from all configured sources')
 
+        # Add force flag option
+        cmd.parser.add_option(
+            '-f', '--force',
+            action='store_true',
+            default=False,
+            help='force update even if IDs already exist'
+        )
+
         def func(lib, opts, args):
-            self.fetch_metadata(lib, ui.decargs(args))
+            self.fetch_metadata(lib, ui.decargs(args), opts.force)
 
         cmd.func = func
         return [cmd]
@@ -137,7 +145,7 @@ class MetaImportPlugin(BeetsPlugin):
             self._log.error('Search failed: {} ({})', str(e), type(e).__name__)
             return None
 
-    def fetch_metadata(self, lib, query):
+    def fetch_metadata(self, lib, query, force=False):
         """Process library albums and fetch missing metadata from configured sources."""
         if not self.meta_sources:
             self._log.warning('No metadata source plugins available. Aborting.')
@@ -163,13 +171,13 @@ class MetaImportPlugin(BeetsPlugin):
             for source_name, source_plugin in self.meta_sources.items():
                 self._log.debug('Processing source: {}', source_name)
 
-                # Check if source-specific ID exists
+                # Check if source-specific ID exists unless force flag is set
                 id_field = f'{source_name}_album_id'
                 current_id = getattr(album, id_field, None)
                 self._log.debug('Checking for existing {} - Current value: {}',
                               id_field, current_id)
 
-                if current_id:
+                if current_id and not force:
                     self._log.debug(f'Already has {source_name} ID: {current_id}')
                     continue
 
