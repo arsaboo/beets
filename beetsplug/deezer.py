@@ -222,21 +222,20 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
-        # Ensure we have valid search text
-        if isinstance(keywords, dict):
-            keywords = keywords.get('album', '')
-        elif isinstance(keywords, (list, tuple)):
-            keywords = ' '.join(map(str, keywords))
-
-        # Clean up query
-        query = keywords.strip()
-        if not query:
-            return []
-
-        # Make API request
-        url = f"{self.search_url}{query_type}"
         try:
-            self._log.debug("Searching Deezer with query: {}", query)
+            # Build search query
+            if isinstance(keywords, (dict, list, tuple)):
+                keywords = str(keywords.get('album', '')) if isinstance(keywords, dict) else ' '.join(map(str, keywords))
+
+            # Clean query string
+            query = keywords.strip()
+            if not query:
+                return []
+
+            self._log.debug("Searching Deezer for query: {}", query)
+
+            # Make API request with error handling
+            url = f"{self.search_url}{query_type}"
             response = requests.get(
                 url,
                 params={"q": query},
@@ -244,17 +243,31 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
             )
             response.raise_for_status()
 
-            # Handle response
             data = response.json()
-            if not data or not isinstance(data, dict):
+            if not isinstance(data, dict):
+                self._log.debug("Invalid response format")
+                return []
+
+            if "error" in data:
+                self._log.debug("Deezer API error: {}", data["error"])
                 return []
 
             results = data.get("data", [])
+            if not isinstance(results, list):
+                self._log.debug("Invalid results format")
+                return []
+
             self._log.debug("Found {} results", len(results))
             return results
 
+        except requests.exceptions.RequestException as e:
+            self._log.debug("Network error: {}", str(e))
+            return []
+        except ValueError as e:
+            self._log.debug("Failed to parse response: {}", str(e))
+            return []
         except Exception as e:
-            self._log.debug("Search failed: {} ({})", str(e), type(e).__name__)
+            self._log.debug("Search error: {} ({})", str(e), type(e).__name__)
             return []
 
     def deezerupdate(self, items, write):
