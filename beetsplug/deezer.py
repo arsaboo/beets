@@ -222,51 +222,57 @@ class DeezerPlugin(MetadataSourcePlugin, BeetsPlugin):
 
     def _search_api(self, query_type, filters=None, keywords=""):
         """Query the Deezer Search API."""
-        # Handle input parameters and build query string
-        if isinstance(keywords, dict):
-            keywords = keywords.get('album', '')
-        elif isinstance(keywords, (list, tuple)):
-            keywords = ' '.join(str(k) for k in keywords)
+        # Simplify query to just use album name for better results
+        if isinstance(keywords, (dict, list, tuple)):
+            self._log.debug('Converting complex keywords to string')
+            keywords = str(keywords.get('album', '')) if isinstance(keywords, dict) else ' '.join(map(str, keywords))
 
-        # Clean and prepare query
+        # Clean up query
         query = keywords.strip()
-        self._log.debug('Using search query: {}', query)
+        self._log.debug('Using query: {}', query)
 
         if not query:
             return []
 
-        # Make API request
         try:
+            # Make request
             url = f"{self.search_url}{query_type}"
-            params = {"q": query}
-            self._log.debug('Searching Deezer at {} with params {}', url, params)
+            self._log.debug('Searching {} at {} with query: {}', self.data_source, url, query)
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(
+                url,
+                params={"q": query},
+                timeout=10
+            )
             response.raise_for_status()
 
+            # Parse JSON response
             data = response.json()
-            if isinstance(data, dict) and "error" in data:
-                self._log.debug("Deezer API error: {}", data["error"])
+            if not isinstance(data, dict):
+                self._log.debug('Unexpected response type: {}', type(data))
                 return []
 
-            # Extract results array from response
-            if isinstance(data, dict) and "data" in data:
-                results = data["data"]
-            else:
-                self._log.debug("Unexpected response format: {}", data)
+            # Extract results
+            if "error" in data:
+                self._log.debug("API error: {}", data["error"])
                 return []
 
-            self._log.debug("Found {} result(s)", len(results))
+            results = data.get("data", [])
+            if not isinstance(results, list):
+                self._log.debug('Unexpected results type: {}', type(results))
+                return []
+
+            self._log.debug('Found {} results for "{}"', len(results), query)
             return results
 
         except requests.exceptions.RequestException as e:
-            self._log.debug("Network error: {} ({})", str(e), type(e).__name__)
+            self._log.debug('Network error: {}', str(e))
             return []
         except ValueError as e:
-            self._log.debug("JSON decode error: {} ({})", str(e), type(e).__name__)
+            self._log.debug('JSON decode error: {}', str(e))
             return []
         except Exception as e:
-            self._log.debug("Search error: {} ({})", str(e), type(e).__name__)
+            self._log.debug('Search error: {} ({})', str(e), type(e).__name__)
             return []
 
     def deezerupdate(self, items, write):
