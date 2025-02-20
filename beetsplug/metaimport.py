@@ -198,63 +198,60 @@ class MetaImportPlugin(BeetsPlugin):
 
                     if results and len(results) > 0:
                         album_data = results[0]
-                        self._log.debug('Selected album data: {}', album_data.get('id'))
+                        self._log.info('Found {} album ID: {}', source_name, album_data.get('id'))
 
                         album_info = source_plugin.album_for_id(album_data.get('id'))
                         if album_info:
-                            self._log.debug('Got album info from {}: {}',
-                                          source_name, vars(album_info))
+                            self._log.info('Got album info from {}: {}', source_name, {
+                                k: v for k, v in vars(album_info).items()
+                                if k.startswith(source_name)
+                            })
 
                             # Update album metadata
                             source_fields = [f for f in vars(album_info)
                                            if f.startswith(source_name)]
-                            self._log.debug('Updating {} fields: {}',
-                                          source_name, source_fields)
+                            self._log.info('Album fields to update: {}', source_fields)
 
                             for field in source_fields:
                                 old_value = getattr(album, field, None)
                                 new_value = getattr(album_info, field)
                                 if old_value != new_value:
-                                    self._log.debug('Updating {} - Old: {}, New: {}',
-                                                  field, old_value, new_value)
+                                    self._log.info('Updating album {} - Old: {}, New: {}',
+                                                field, old_value, new_value)
                                     setattr(album, field, new_value)
 
                             # Store album changes
                             album.store()
-                            self._log.debug('Stored album changes')
 
                             # Update individual tracks
-                            self._log.debug('Processing {} tracks', len(album_info.tracks))
+                            self._log.info('Processing {} tracks', len(album_info.tracks))
                             tracks_by_index = defaultdict(list)
                             for track_info in album_info.tracks:
                                 tracks_by_index[track_info.index].append(track_info)
 
                             for item in album.items():
-                                self._log.debug('Processing track {} of {}',
-                                              item.track, item.title)
+                                self._log.info('Processing track {} - {}',
+                                            item.track, item.title)
                                 if item.track in tracks_by_index:
                                     track_info = tracks_by_index[item.track][0]
                                     track_fields = [f for f in vars(track_info)
-                                                  if f.startswith(source_name)]
-                                    self._log.debug('Updating track fields: {}',
-                                                  track_fields)
+                                                if f.startswith(source_name)]
+                                    self._log.info('Track fields to update: {}', track_fields)
 
                                     for field in track_fields:
                                         old_value = getattr(item, field, None)
                                         new_value = getattr(track_info, field)
                                         if old_value != new_value:
-                                            self._log.debug('Updating {} - Old: {}, New: {}',
-                                                          field, old_value, new_value)
+                                            self._log.info('Updating track {} - Old: {}, New: {}',
+                                                        field, old_value, new_value)
                                             setattr(item, field, new_value)
 
                                     item.store()
                                     if write:
-                                        self._log.debug('Writing changes to file: {}',
-                                                      item.path)
                                         item.try_write()
-                    else:
-                        self._log.debug('No matches found on {} for album: {}',
-                                      source_name, album.album)
+                        else:
+                            self._log.warning('Could not fetch album info for ID: {}',
+                                          album_data.get('id'))
 
                 except Exception as e:
                     self._log.warning('Error querying {}: {} ({})',
