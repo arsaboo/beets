@@ -278,7 +278,7 @@ class AudioMusePlugin(BeetsPlugin):
                     if match:
                         item_id = match.get("item_id")
                         author = match.get("author")
-                        self._log.info(
+                        self._log.debug(
                             "Would set: '{}' - '{}' => item_id {}",
                             title,
                             author,
