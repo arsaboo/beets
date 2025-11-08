@@ -68,7 +68,9 @@ class AudioMusePlugin(BeetsPlugin):
         """
         endpoint = f"{self.base_url}/api/search_tracks"
         try:
-            params = {"title": title}
+            # Normalize title minimally for query (trim & collapse spaces)
+            q_title = re.sub(r"\s+", " ", title).strip()
+            params = {"title": q_title}
             if artist:
                 params["artist"] = artist
             resp = requests.get(endpoint, params=params, timeout=10)
@@ -100,7 +102,7 @@ class AudioMusePlugin(BeetsPlugin):
         if current:
             return current
 
-        title = item.title
+        title = (item.title or "").strip()
         artist = item.artist or item.albumartist
         if not title or not artist:
             return None
@@ -183,6 +185,16 @@ class AudioMusePlugin(BeetsPlugin):
         parts = [p.strip() for p in normalized.split(",") if p.strip()]
         return parts
 
+    def _norm_title(self, s: str) -> str:
+        # Basic normalization: trim, collapse internal whitespace, lowercase.
+        return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
+    def _bare_title(self, s: str) -> str:
+        # Further strip punctuation for fuzzy matching phases.
+        t = self._norm_title(s)
+        t = re.sub(r"[\-_'\"`~!?.,()\[\]{}]", "", t)
+        return t
+
     def _authors_match(self, a: str, b: str) -> bool:
         aset = {p.lower() for p in self._split_artists(a)}
         bset = {p.lower() for p in self._split_artists(b)}
@@ -194,28 +206,50 @@ class AudioMusePlugin(BeetsPlugin):
         """Return best match candidate.
 
         Priority:
-        - exact title and normalized author match
-        - exact title match
-        - first element
+        - exact normalized title and normalized author match
+        - exact normalized title match
+        - exact bare (punctuation-stripped) title match
+        - prefix match (either side startswith the other)
+        - containment match (substring either way)
+        - first element fallback
         """
-        title_lower = (title or "").lower()
-        # exact title + normalized author
-        for row in data:
+        norm_title = self._norm_title(title)
+        bare_title = self._bare_title(title)
+        artist_ref = artist or ""
+
+        prepared = []
+        for row in (data or []):
             try:
-                if row.get("title", "").lower() == title_lower and self._authors_match(
-                    row.get("author", ""), artist
-                ):
-                    return row
+                r_title = row.get("title", "")
+                r_author = row.get("author", row.get("authors", ""))
+                r_norm = self._norm_title(r_title)
+                r_bare = self._bare_title(r_title)
+                prepared.append((row, r_norm, r_bare, r_author))
             except Exception:
                 continue
-        # exact title
-        for row in data:
-            try:
-                if row.get("title", "").lower() == title_lower:
-                    return row
-            except Exception:
-                continue
-        return data[0] if data else None
+
+        # 1. Exact normalized title + author match
+        for row, r_norm, _r_bare, r_author in prepared:
+            if r_norm == norm_title and self._authors_match(r_author, artist_ref):
+                return row
+        # 2. Exact normalized title
+        for row, r_norm, _r_bare, _r_author in prepared:
+            if r_norm == norm_title:
+                return row
+        # 3. Bare title equality
+        for row, _r_norm, r_bare, _r_author in prepared:
+            if r_bare == bare_title:
+                return row
+        # 4. Prefix match
+        for row, r_norm, _r_bare, _r_author in prepared:
+            if r_norm.startswith(norm_title) or norm_title.startswith(r_norm):
+                return row
+        # 5. Containment match
+        for row, r_norm, _r_bare, _r_author in prepared:
+            if norm_title in r_norm or r_norm in norm_title:
+                return row
+        # 6. Fallback
+        return prepared[0][0] if prepared else None
 
     def commands(self):
         # 1) Match: ensure audiomuse_item_id for items
@@ -227,7 +261,7 @@ class AudioMusePlugin(BeetsPlugin):
             action = "Previewing" if getattr(opts, "pretend", False) else "Matching"
             self._log.info("{} AudioMuse item_id for {} items", action, len(items))
             for item in items:
-                title = item.title
+                title = (item.title or "").strip()
                 artist = item.artist or item.albumartist
                 if not title or not artist:
                     self._log.debug("Skipping item missing title/artist: {}", item)
