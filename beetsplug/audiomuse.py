@@ -1,32 +1,4 @@
-"""AudioMuse plugin.
-
-Provides basic track search against an AudioMuse-AI server
-to retrieve the media server `item_id` given a beets track's
-title and artist. AudioMuse uses the field name `author` for
-the artist internally.
-
-Configuration example (in beets config.yaml):
-
-    audiomuse:
-      url: "http://192.168.2.162:8001"  # AudioMuse base URL
-
-Usage:
-
-    beet audiomusesearch QUERY
-
-Where QUERY is any beets item query (e.g. album:XYZ). For each
-matching item we call /api/search_tracks?title=...&artist=..., pick
-the first match (exact title+author case-insensitive) and display it.
-
-Optional flags:
-    --set : store the returned item_id into flexible field `audiomuse_item_id`
-    --write : after setting the field, write tags to file if possible.
-
-Limitations:
- - Only basic search is implemented; similarity endpoints and others
-   can be added later.
- - No retries/backoff; simple HTTP GET with timeout.
-"""
+"""Integrates with AudioMuse-AI to enrich tracks and find similar music."""
 
 from __future__ import annotations
 
@@ -82,7 +54,9 @@ class AudioMusePlugin(BeetsPlugin):
         try:
             data = resp.json()
         except ValueError:
-            self._log.debug("AudioMuse invalid JSON response: {}", resp.text[:200])
+            self._log.debug(
+                "AudioMuse invalid JSON response: {}", resp.text[:200]
+            )
             return []
 
         if not isinstance(data, list):
@@ -218,7 +192,7 @@ class AudioMusePlugin(BeetsPlugin):
         artist_ref = artist or ""
 
         prepared = []
-        for row in (data or []):
+        for row in data or []:
             try:
                 r_title = row.get("title", "")
                 r_author = row.get("author", row.get("authors", ""))
@@ -230,7 +204,9 @@ class AudioMusePlugin(BeetsPlugin):
 
         # 1. Exact normalized title + author match
         for row, r_norm, _r_bare, r_author in prepared:
-            if r_norm == norm_title and self._authors_match(r_author, artist_ref):
+            if r_norm == norm_title and self._authors_match(
+                r_author, artist_ref
+            ):
                 return row
         # 2. Exact normalized title
         for row, r_norm, _r_bare, _r_author in prepared:
@@ -258,13 +234,19 @@ class AudioMusePlugin(BeetsPlugin):
             if not items:
                 self._log.info("No matching items for query.")
                 return
-            action = "Previewing" if getattr(opts, "pretend", False) else "Matching"
-            self._log.info("{} AudioMuse item_id for {} items", action, len(items))
+            action = (
+                "Previewing" if getattr(opts, "pretend", False) else "Matching"
+            )
+            self._log.info(
+                "{} AudioMuse item_id for {} items", action, len(items)
+            )
             for item in items:
                 title = (item.title or "").strip()
                 artist = item.artist or item.albumartist
                 if not title or not artist:
-                    self._log.debug("Skipping item missing title/artist: {}", item)
+                    self._log.debug(
+                        "Skipping item missing title/artist: {}", item
+                    )
                     continue
 
                 # If pretend, do not store; just compute what would be set
@@ -332,7 +314,9 @@ class AudioMusePlugin(BeetsPlugin):
                     self._log.info("Skipping (no item_id): {}", item)
                     continue
                 try:
-                    resp = requests.get(base, params={"id": item_id}, timeout=10)
+                    resp = requests.get(
+                        base, params={"id": item_id}, timeout=10
+                    )
                     resp.raise_for_status()
                     data = resp.json()
                 except requests.RequestException as exc:
@@ -357,7 +341,9 @@ class AudioMusePlugin(BeetsPlugin):
 
                 if opts.pretend:
                     self._log.info(
-                        "Would store embedding for {} ({} dims)", item, len(vector)
+                        "Would store embedding for {} ({} dims)",
+                        item,
+                        len(vector),
                     )
                 else:
                     item["audiomuse_embedding"] = json.dumps(vector)
@@ -397,7 +383,9 @@ class AudioMusePlugin(BeetsPlugin):
                     self._log.info("Skipping (no item_id): {}", item)
                     continue
                 try:
-                    resp = requests.get(base, params={"id": item_id}, timeout=10)
+                    resp = requests.get(
+                        base, params={"id": item_id}, timeout=10
+                    )
                     resp.raise_for_status()
                     data = resp.json()
                 except requests.RequestException as exc:
@@ -408,7 +396,9 @@ class AudioMusePlugin(BeetsPlugin):
                     continue
 
                 if not isinstance(data, dict):
-                    self._log.debug("Unexpected score payload type: {}", type(data))
+                    self._log.debug(
+                        "Unexpected score payload type: {}", type(data)
+                    )
                     continue
 
                 if opts.pretend:
@@ -423,10 +413,16 @@ class AudioMusePlugin(BeetsPlugin):
                     if "scale" in data:
                         fields.append(f"scale={data['scale']}")
                     if "mood_vector" in data:
-                        fields.append(f"mood_vector={data['mood_vector'][:50]}...")
+                        fields.append(
+                            f"mood_vector={data['mood_vector'][:50]}..."
+                        )
                     if "other_features" in data:
-                        fields.append(f"other_features={data['other_features'][:50]}...")
-                    self._log.info("Would store for {}: {}", item, ", ".join(fields))
+                        fields.append(
+                            f"other_features={data['other_features'][:50]}..."
+                        )
+                    self._log.info(
+                        "Would store for {}: {}", item, ", ".join(fields)
+                    )
                 else:
                     if "energy" in data:
                         try:
@@ -444,7 +440,9 @@ class AudioMusePlugin(BeetsPlugin):
                         item["audiomuse_scale"] = str(data["scale"])  # type: ignore[assignment]
 
                     if "mood_vector" in data:
-                        mv_str = str(data["mood_vector"])  # e.g., "hip-hop:0.55,..."
+                        mv_str = str(
+                            data["mood_vector"]
+                        )  # e.g., "hip-hop:0.55,..."
                         item["audiomuse_mood_vector"] = mv_str
                         for label, val in self._parse_kv_string(mv_str).items():
                             item[f"audiomuse_mood_{label}"] = val
@@ -492,13 +490,15 @@ class AudioMusePlugin(BeetsPlugin):
                 if similar:
                     self._log.info(
                         "Found {} similar tracks for '{}' - '{}'",
-                        len(similar), item.title, item.artist
+                        len(similar),
+                        item.title,
+                        item.artist,
                     )
                     for track in similar[:10]:  # Show first 10
                         self._log.info(
                             "  → '{}' - '{}'",
                             track.get("title", "?"),
-                            track.get("author", "?")
+                            track.get("author", "?"),
                         )
                 else:
                     self._log.info("No similar tracks found for {}", item)
@@ -518,4 +518,3 @@ class AudioMusePlugin(BeetsPlugin):
         similar_cmd.func = similar_func
 
         return [match_cmd, embedding_cmd, score_cmd, similar_cmd]
-

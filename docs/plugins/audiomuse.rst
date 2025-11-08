@@ -10,6 +10,19 @@ AudioMuse-AI uses deep learning to analyze your music's sonic characteristics,
 enabling advanced querying and playlist generation based on audio features
 rather than just metadata tags.
 
+Prerequisites
+-------------
+
+This plugin assumes you have an AudioMuse-AI Core instance running and reachable
+from your beets host. For setup instructions, installation details, and API
+capabilities, see the AudioMuse-AI project:
+
+    https://github.com/NeptuneHub/AudioMuse-AI
+
+Be sure the service URL (host:port) is accessible before invoking any
+``audiomuse_*`` commands; otherwise requests will fail gracefully with debug
+logs.
+
 Setup
 -----
 
@@ -42,21 +55,12 @@ Resolve and Store Item IDs
     beet audiomuse_match QUERY [-p]
 
 Resolves and stores ``audiomuse_item_id`` for each selected item by querying
-``/api/search_tracks`` with the item's title and artist. The plugin implements
-intelligent matching with:
-
-- **Multi-artist normalization**: Handles various separator formats (•, &, and,
-  /, feat/ft/featuring, x/×, comma) for consistent matching across different
-  notation styles.
-- **Fallback strategies**: If exact match fails, tries simplified artist (first
-  token only), then title-only search for maximum compatibility.
-- **Priority-based selection**: Prefers exact title + normalized author match,
-  falls back to exact title match, then accepts first result.
-
-Matched item IDs are automatically stored in the beets database.
+``/api/search_tracks`` with the item's title and artist. Matching is tolerant to
+common formatting differences (extra spaces, featuring separators, etc.).
+Matched item IDs are stored in the beets database.
 
 Options
-^^^^^^^
++++++++
 
 - ``-p``, ``--pretend``: Preview matches without storing to the database. Useful
   for testing the matching logic before committing changes.
@@ -69,23 +73,11 @@ Fetch Embeddings
     beet audiomuse_get_embedding QUERY [-p]
 
 For each item with an ``audiomuse_item_id``, fetches the audio embedding vector
-from ``/external/get_embedding?id=<item_id>``. AudioMuse-AI's embeddings are
-generated through deep learning analysis of the audio's sonic characteristics,
-capturing timbral, rhythmic, and harmonic features in a high-dimensional vector
-space.
-
-The API response format is flexible:
-
-- Direct array: ``[0.123, -0.456, 0.789, ...]``
-- Dictionary with ``vector`` key: ``{"vector": [0.123, ...]}``
-- Dictionary with ``embedding`` key: ``{"embedding": [0.123, ...]}``
-
-The entire JSON structure (as received) is serialized and stored in the
-flexible field ``audiomuse_embedding`` for later use in similarity calculations
-or visualization.
+from ``/external/get_embedding?id=<item_id>`` and stores it in
+``audiomuse_embedding`` for similarity and analysis workflows.
 
 Options
-^^^^^^^
++++++++
 
 - ``-p``, ``--pretend``: Preview embeddings without storing to the database.
   Shows the dimension count without saving data.
@@ -127,7 +119,7 @@ Example dynamic fields: ``audiomuse_valence``, ``audiomuse_arousal``,
 ``audiomuse_danceability``, ``audiomuse_speechiness``.
 
 Options
-^^^^^^^
++++++++
 
 - ``-p``, ``--pretend``: Preview score data without storing to the database.
   Shows field names and values that would be stored.
@@ -139,15 +131,10 @@ Find Similar Tracks
 
     beet audiomuse_similar QUERY [-n COUNT]
 
-Finds similar tracks using AudioMuse-AI's embedding-based similarity search.
-For each item with an ``audiomuse_item_id``, queries
-``/api/similar_tracks?item_id=<item_id>&n=<count>`` to retrieve tracks with
-similar sonic characteristics.
-
-AudioMuse-AI calculates similarity using cosine distance between audio
-embedding vectors in high-dimensional space. This provides more accurate
-similarity matching than traditional metadata-based approaches (genre, artist),
-capturing actual sonic features like timbre, rhythm, and harmony.
+Finds similar tracks using AudioMuse-AI's embedding-based similarity search. For
+each item with an ``audiomuse_item_id``, it queries
+``/api/similar_tracks?item_id=<item_id>&n=<count>`` to retrieve tracks that
+sound alike.
 
 **Use Cases**:
 
@@ -156,7 +143,7 @@ capturing actual sonic features like timbre, rhythm, and harmony.
 - Find tracks that "sound similar" even across different genres or artists
 
 Options
-^^^^^^^
++++++++
 
 - ``-n``, ``--count``: Number of similar tracks to retrieve (default: 20, max
   typically 100 depending on server configuration)
@@ -250,47 +237,3 @@ Build a playlist of similar tracks from a starting song:
     beet ls -f '$id $title - $artist' title:"Get Lucky"
     # Find 30 similar tracks
     beet audiomuse_similar id:12345 -n 30
-
-Notes
------
-
-- **Multi-artist matching**: The plugin normalizes various separator formats
-  (commas, ``•``, ``&``, ``feat.``, ``x``, etc.) to improve matching accuracy
-  when AudioMuse-AI returns author strings in different notation styles.
-
-- **Fallback strategies**: If no exact match is found, the plugin attempts:
-  1. Simplified artist search (first token only)
-  2. Title-only search (no artist parameter)
-  This ensures maximum compatibility even when artist metadata varies.
-
-- **Dynamic field parsing**: The ``mood_vector`` and ``other_features`` fields
-  from ``/external/get_score`` are automatically parsed into individual flexible
-  fields. Labels are slugified (e.g., "Valence" → ``audiomuse_valence``,
-  "Speech-iness" → ``audiomuse_speech_iness``) for easy querying.
-
-- **Data persistence**: All commands only store data when the AudioMuse-AI
-  server responds successfully. Network errors or invalid responses are logged
-  but do not modify existing fields.
-
-- **Server compatibility**: This plugin is designed for AudioMuse-AI Core
-  servers. The server implements a Subsonic-compatible API layer with custom
-  extensions for sonic analysis features.
-
-- **Similarity matching**: The ``audiomuse_similar`` command uses cosine
-  distance between embedding vectors to find acoustically similar tracks. This
-  is more accurate than metadata-based similarity (genre, artist) because it
-  analyzes actual audio content. The AudioMuse-AI Core server uses the Voyager
-  nearest-neighbor search engine for efficient similarity queries across large
-  libraries.
-
-- **Future extensions**: The AudioMuse-AI server provides additional endpoints
-  like ``/api/alchemy`` (AI-powered playlist generation with temperature and
-  subtract_distance parameters for creative playlist blending), ``/api/map``
-  (2D/3D visualization of music library in embedding space), and
-  ``/api/voyager/search_tracks`` (fast autocomplete search). Support for these
-  features may be added in future plugin versions.
-
-- **Performance considerations**: Embedding and score fetching can be
-  time-consuming for large libraries. Consider running these commands on
-  filtered subsets (e.g., by album or artist) and using the ``-w`` flag to
-  persist data incrementally.
