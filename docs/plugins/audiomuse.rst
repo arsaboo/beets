@@ -1,27 +1,17 @@
 AudioMuse
 =========
 
-The ``audiomuse`` plugin integrates with an AudioMuse-AI server to enrich your
-music library with AI-powered sonic analysis. It retrieves unique track
-identifiers (``item_id``), embedding vectors for semantic similarity, and rich
-score metadata (energy, tempo, key, scale, mood labels).
+The ``audiomuse`` plugin enriches your music library with AI-powered audio
+analysis. It retrieves and stores a track identifier, a semantic embedding
+vector, and a set of audio feature fields (energy, tempo, key, scale, and
+flexible mood/feature scores) that you can query in beets.
 
-AudioMuse-AI uses deep learning to analyze your music's sonic characteristics,
-enabling advanced querying and playlist generation based on audio features
-rather than just metadata tags.
+Requirements
+------------
 
-Prerequisites
--------------
-
-This plugin assumes you have an AudioMuse-AI Core instance running and reachable
-from your beets host. For setup instructions, installation details, and API
-capabilities, see the AudioMuse-AI project:
-
-    https://github.com/NeptuneHub/AudioMuse-AI
-
-Be sure the service URL (host:port) is accessible before invoking any
-``audiomuse_*`` commands; otherwise requests will fail gracefully with debug
-logs.
+This plugin expects a running AudioMuse service reachable from your beets host.
+Ensure the configured URL is accessible before using the commands; otherwise
+requests will be skipped and logged at debug level.
 
 Setup
 -----
@@ -35,12 +25,12 @@ Enable the plugin in your :doc:`beets configuration </reference/config>`:
 Configuration
 -------------
 
-Add an ``audiomuse`` section to point at your AudioMuse-AI Core server:
+Add an ``audiomuse`` section to point at your AudioMuse server:
 
 .. code-block:: yaml
 
     audiomuse:
-      url: "http://192.168.2.162:8001"  # Base URL of your AudioMuse-AI Core
+      url: "http://192.168.2.162:8001"  # Base URL of your AudioMuse service
 
 If omitted, the plugin defaults to ``http://127.0.0.1:8001``.
 
@@ -54,10 +44,15 @@ Resolve and Store Item IDs
 
     beet audiomuse_match QUERY [-p]
 
-Resolves and stores ``audiomuse_item_id`` for each selected item by querying
-``/api/search_tracks`` with the item's title and artist. Matching is tolerant to
-common formatting differences (extra spaces, featuring separators, etc.).
-Matched item IDs are stored in the beets database.
+Resolves and stores ``audiomuse_item_id`` for each selected item by searching
+the configured service using the item's title and artist. Matching is tolerant
+to common formatting differences (extra spaces, featuring separators, etc.).
+Matched item IDs are stored in your beets database.
+
+Stored field:
+
+- ``audiomuse_item_id`` – Unique identifier for the track on the AudioMuse
+  service.
 
 Options
 +++++++
@@ -73,8 +68,13 @@ Fetch Embeddings
     beet audiomuse_get_embedding QUERY [-p]
 
 For each item with an ``audiomuse_item_id``, fetches the audio embedding vector
-from ``/external/get_embedding?id=<item_id>`` and stores it in
-``audiomuse_embedding`` for similarity and analysis workflows.
+from the service and stores it as JSON in ``audiomuse_embedding`` for similarity
+and analysis workflows.
+
+Stored field:
+
+- ``audiomuse_embedding`` – JSON array (list of floats) representing the
+  semantic audio embedding used for similarity comparisons.
 
 Options
 +++++++
@@ -90,33 +90,28 @@ Fetch Score Metadata
     beet audiomuse_get_score QUERY [-p]
 
 For each item with an ``audiomuse_item_id``, fetches comprehensive audio
-analysis metadata from ``/external/get_score?id=<item_id>``. AudioMuse-AI
-computes these features using signal processing and machine learning models.
+analysis metadata from the service and stores core and dynamic feature fields.
 
-**API Response Structure**:
+Stored fields:
 
-- ``energy`` (float): Overall intensity and activity level
-- ``tempo`` (float): Estimated beats per minute (BPM)
-- ``key`` (string): Detected musical key (e.g., "C", "F#")
-- ``scale`` (string): Detected scale mode (e.g., "major", "minor")
-- ``mood_vector`` (string): Comma-separated ``label:value`` pairs for mood
-  dimensions (e.g., ``"valence:0.8,arousal:0.6"``). Common mood labels include
-  valence, arousal, danceability, acousticness.
-- ``other_features`` (string): Comma-separated ``label:value`` pairs for
+- ``audiomuse_energy`` – Float intensity/activity estimate.
+- ``audiomuse_tempo`` – Float BPM estimate.
+- ``audiomuse_key`` – Detected key (e.g. ``C``, ``F#``).
+- ``audiomuse_scale`` – Mode (e.g. ``major``, ``minor``).
+- ``audiomuse_mood_vector`` – Original comma-separated mood labels string.
+- ``audiomuse_other_features`` – Comma-separated ``label:value`` pairs for
   additional audio features (e.g., ``"speechiness:0.1,instrumentalness:0.95"``).
+- ``audiomuse_mood_<label>`` – Parsed per-mood scores (e.g.
+  ``audiomuse_mood_valence``).
+- ``audiomuse_<label>`` – Parsed per-feature scores (e.g.
+  ``audiomuse_danceability``).
 
-**Field Storage**:
+Parsing notes:
 
-- ``audiomuse_energy`` (float)
-- ``audiomuse_tempo`` (float)
-- ``audiomuse_key`` (string)
-- ``audiomuse_scale`` (string)
-- Dynamic fields from ``mood_vector`` and ``other_features`` are automatically
-  parsed, slugified (labels converted to ``audiomuse_<lowercase_label_name>``),
-  and stored. Values are stored as floats if numeric, otherwise as strings.
-
-Example dynamic fields: ``audiomuse_valence``, ``audiomuse_arousal``,
-``audiomuse_danceability``, ``audiomuse_speechiness``.
+- Labels are lowercased and slugified; numeric values stored as floats when
+  possible.
+- Dynamic labels depend on what the service returns; you can query them directly
+  once stored.
 
 Options
 +++++++
@@ -131,10 +126,12 @@ Find Similar Tracks
 
     beet audiomuse_similar QUERY [-n COUNT]
 
-Finds similar tracks using AudioMuse-AI's embedding-based similarity search. For
-each item with an ``audiomuse_item_id``, it queries
-``/api/similar_tracks?item_id=<item_id>&n=<count>`` to retrieve tracks that
+Finds similar tracks using embedding-based similarity search provided by the
+service. For each item with an ``audiomuse_item_id``, it retrieves tracks that
 sound alike.
+
+This command does not store new fields; it only lists similar tracks based on
+the existing ``audiomuse_embedding`` (or server-side similarity).
 
 **Use Cases**:
 
