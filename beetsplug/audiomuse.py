@@ -224,8 +224,39 @@ class AudioMusePlugin(BeetsPlugin):
             if not items:
                 self._log.info("No matching items for query.")
                 return
-            self._log.info("Matching AudioMuse item_id for {} items", len(items))
+            action = "Previewing" if getattr(opts, "pretend", False) else "Matching"
+            self._log.info("{} AudioMuse item_id for {} items", action, len(items))
             for item in items:
+                title = item.title
+                artist = item.artist or item.albumartist
+                if not title or not artist:
+                    self._log.debug("Skipping item missing title/artist: {}", item)
+                    continue
+
+                # If pretend, do not store; just compute what would be set
+                if getattr(opts, "pretend", False):
+                    tokens = self._split_artists(artist)
+                    primary = tokens[0] if tokens else artist
+                    results = self._search_track(title, primary)
+                    if not results:
+                        results = self._search_track(title, None)
+                    match = self._match_first(results, title, artist)
+                    if match:
+                        item_id = match.get("item_id")
+                        author = match.get("author")
+                        self._log.info(
+                            "Would set: '{}' - '{}' => item_id {}",
+                            title,
+                            author,
+                            item_id,
+                        )
+                    else:
+                        self._log.info(
+                            "No AudioMuse match: '{}' - '{}'", title, artist
+                        )
+                    continue
+
+                # Non-pretend: resolve and store
                 item_id = self._get_item_id_for_item(item)
                 if item_id:
                     self._log.info("item_id set: {} -> {}", item, item_id)
@@ -240,6 +271,13 @@ class AudioMusePlugin(BeetsPlugin):
             "audiomuse_match",
             help="resolve and store AudioMuse item_id for items",
         )
+        match_cmd.parser.add_option(
+            "-p",
+            "--pretend",
+            action="store_true",
+            dest="pretend",
+            help="preview matches without storing to database",
+        )
         match_cmd.func = match_func
 
         # 2) Get embedding vector
@@ -252,7 +290,10 @@ class AudioMusePlugin(BeetsPlugin):
             action = "Previewing" if opts.pretend else "Fetching"
             self._log.info("{} embeddings for {} items", action, len(items))
             for item in items:
-                item_id = self._get_item_id_for_item(item) if not opts.pretend else item.get("audiomuse_item_id")
+                if opts.pretend:
+                    item_id = item.get("audiomuse_item_id")
+                else:
+                    item_id = self._get_item_id_for_item(item)
                 if not item_id:
                     self._log.info("Skipping (no item_id): {}", item)
                     continue
