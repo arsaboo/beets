@@ -23,7 +23,11 @@ New features:
 - Added support for Python 3.13.
 - :doc:`plugins/audiomuse`: Add new plugin to query an AudioMuse-AI server for
   track ``item_id`` values based on title and artist and optionally store them
-  in the ``audiomuse_item_id`` flexible field.
+  in the ``audiomuse_item_id`` flexible field. Also adds commands to persist
+  embeddings (``audiomuse_embedding``), score features (``audiomuse_energy``,
+  ``audiomuse_tempo``, ``audiomuse_key``, ``audiomuse_scale``), dynamically
+  parsed mood/feature labels, and similarity search (``audiomuse_similar``)
+  using AI-powered embedding-based matching.
 
 Bug fixes:
 
