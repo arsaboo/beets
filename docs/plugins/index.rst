@@ -130,6 +130,7 @@ databases. They share the following configuration options:
     thumbnails
     types
     unimported
+    audiomuse
     web
     zero
 

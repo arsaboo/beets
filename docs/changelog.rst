@@ -21,6 +21,9 @@ New features:
 - :doc:`plugins/mbpseudo`: Add a new `mbpseudo` plugin to proactively receive
       MusicBrainz pseudo-releases as recommendations during import.
 - Added support for Python 3.13.
+- :doc:`plugins/audiomuse`: Add new plugin to query an AudioMuse-AI server for
+  track ``item_id`` values based on title and artist and optionally store them
+  in the ``audiomuse_item_id`` flexible field.
 
 Bug fixes:
 
