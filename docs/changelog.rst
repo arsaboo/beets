@@ -7,9 +7,14 @@ below!
 Unreleased
 ----------
 
+Beets now requires Python 3.10 or later since support for EOL Python 3.9 has
+been dropped.
+
 New features:
 
 - :doc:`plugins/ftintitle`: Added argument for custom feat. words in ftintitle.
+- :doc:`plugins/musicbrainz`: Allow selecting tags or genres to populate the
+  genres tag.
 - :doc:`plugins/ftintitle`: Added argument to skip the processing of artist and
   album artist are the same in ftintitle.
 - :doc:`plugins/play`: Added `$playlist` marker to precisely edit the playlist
@@ -31,6 +36,9 @@ New features:
 
 Bug fixes:
 
+- When hardlinking from a symlink (e.g. importing a symlink with hardlinking
+  enabled), dereference the symlink then hardlink, rather than creating a new
+  (potentially broken) symlink :bug:`5676`
 - :doc:`/plugins/spotify`: The plugin now gracefully handles audio-features API
   deprecation (HTTP 403 errors). When a 403 error is encountered from the
   audio-features endpoint, the plugin logs a warning once and skips audio
@@ -40,6 +48,8 @@ Bug fixes:
   the default config path. :bug:`5652`
 - :doc:`plugins/lyrics`: Accepts strings for lyrics sources (previously only
   accepted a list of strings). :bug:`5962`
+- Fix a bug introduced in release 2.4.0 where import from any valid
+  import-log-file always threw a "none of the paths are importable" error.
 
 For plugin developers:
 
@@ -48,6 +58,8 @@ For plugin developers:
   been calculated.
 
 For packagers:
+
+- The minimum supported Python version is now 3.10.
 
 Other changes:
 
