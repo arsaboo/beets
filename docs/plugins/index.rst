@@ -102,6 +102,7 @@ databases. They share the following configuration options:
     lyrics
     mbsync
     metasync
+    metaimport
     missing
     mpdstats
     mpdupdate
@@ -226,6 +227,9 @@ Metadata
 
 :doc:`metasync <metasync>`
     Fetch metadata from local or remote sources
+
+:doc:`metaimport <metaimport>`
+    Merge metadata from multiple source plugins with provider-aware precedence
 
 :doc:`mpdstats <mpdstats>`
     Connect to MPD_ and update the beets library with play statistics

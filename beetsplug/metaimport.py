@@ -63,6 +63,7 @@ class MetaImportContext:
     dry_run: bool
     max_distance: Optional[float]
     refresh_cache: bool
+    provider_settings: Dict[str, dict[str, set[str]]]
 
 
 @dataclass
@@ -94,6 +95,7 @@ class MetaImportPlugin(BeetsPlugin):
             {
                 "sources": "auto",
                 "primary_source": None,
+                "providers": {},
                 "write": True,
                 "max_distance": None,
                 "pretend": False,
@@ -201,6 +203,8 @@ class MetaImportPlugin(BeetsPlugin):
         if not primary_source and sources:
             primary_source = sources[-1]
 
+        ordered_sources = self._ordered_sources(sources, primary_source)
+
         force = bool(opts.force)
         pretend = bool(opts.pretend) or self.config["pretend"].get(bool)
         write = self.config["write"].get(bool)
@@ -222,9 +226,10 @@ class MetaImportPlugin(BeetsPlugin):
             max_distance = float(max_distance_opt)
 
         refresh_cache = bool(getattr(opts, "refresh_cache", False))
+        provider_settings = self._provider_settings(plugins_by_key)
 
         return MetaImportContext(
-            sources=sources,
+            sources=ordered_sources,
             plugins=plugins_by_key,
             primary_source=primary_source or "",
             force=force,
@@ -232,6 +237,7 @@ class MetaImportPlugin(BeetsPlugin):
             dry_run=pretend,
             max_distance=max_distance,
             refresh_cache=refresh_cache,
+            provider_settings=provider_settings,
         )
 
     def _resolve_sources(
@@ -265,6 +271,52 @@ class MetaImportPlugin(BeetsPlugin):
     @staticmethod
     def _normalize_source(name: str) -> str:
         return name.replace("_", "").replace("-", "").replace(" ", "").lower()
+
+    def _ordered_sources(
+        self, sources: Sequence[str], primary_source: Optional[str]
+    ) -> List[str]:
+        ordered = list(dict.fromkeys(sources))
+        if primary_source and primary_source in ordered:
+            ordered.remove(primary_source)
+            ordered.insert(0, primary_source)
+
+        if "musicbrainz" in ordered:
+            ordered.remove("musicbrainz")
+            ordered.append("musicbrainz")
+
+        return ordered
+
+    def _provider_settings(
+        self, plugins_by_key: Dict[str, MetadataSourcePlugin]
+    ) -> Dict[str, dict[str, set[str]]]:
+        configured = self.config["providers"].get(dict) or {}
+        settings: Dict[str, dict[str, set[str]]] = {}
+
+        for raw_key, raw_value in configured.items():
+            key = self._normalize_source(str(raw_key))
+            if key not in plugins_by_key:
+                continue
+            provider_config = raw_value if isinstance(raw_value, dict) else {}
+            settings[key] = {
+                "exclude_album_fields": self._config_field_set(
+                    provider_config.get("exclude_album_fields")
+                ),
+                "exclude_track_fields": self._config_field_set(
+                    provider_config.get("exclude_track_fields")
+                ),
+            }
+
+        return settings
+
+    @staticmethod
+    def _config_field_set(value: Any) -> set[str]:
+        if not value:
+            return set()
+        if isinstance(value, str):
+            return {value}
+        if isinstance(value, Sequence):
+            return {str(entry) for entry in value}
+        return set()
 
     # ------------------------------ Cache Utilities ------------------------------
 
@@ -572,20 +624,6 @@ class MetaImportPlugin(BeetsPlugin):
             )
             self._apply_result(album, result, context)
 
-    @staticmethod
-    def _distance_value(distance_obj: Distance | float | None) -> Optional[float]:
-        if distance_obj is None:
-            return None
-        if isinstance(distance_obj, Distance):
-            try:
-                return float(distance_obj.distance)
-            except Exception:
-                return None
-        try:
-            return float(distance_obj)
-        except Exception:
-            return None
-
     # ------------------------------ Core Execution ------------------------------
 
     def _run(
@@ -646,6 +684,7 @@ class MetaImportPlugin(BeetsPlugin):
                 cached_matches = self._load_cached_matches_for_album(lib, album.id)
 
         applied_matches: Dict[str, CachedMatchPayload] = {}
+        matched_results: Dict[str, SourceMatchResult] = {}
 
         for source_key in context.sources:
             plugin = context.plugins.get(source_key)
@@ -675,8 +714,19 @@ class MetaImportPlugin(BeetsPlugin):
                     album_info=self._serialize_album_info(result.match.info),
                     distance=self._distance_value(result.match.distance),
                 )
+                matched_results[source_key] = result
 
+        for result in matched_results.values():
             self._apply_result(album, result, context)
+
+        if applied_matches and album.id is not None:
+            lib = getattr(album, "_db", None)
+            if lib is not None:
+                self._write_cache_entries(
+                    lib,
+                    album.id,
+                    PendingCache(matches=applied_matches, created=time.time()),
+                )
 
     @staticmethod
     def _distance_value(distance_obj: Distance | float | None) -> Optional[float]:
@@ -691,15 +741,6 @@ class MetaImportPlugin(BeetsPlugin):
             return float(distance_obj)
         except Exception:
             return None
-
-        if applied_matches and album.id is not None:
-            lib = getattr(album, "_db", None)
-            if lib is not None:
-                self._write_cache_entries(
-                    lib,
-                    album.id,
-                    PendingCache(matches=applied_matches, created=time.time()),
-                )
 
     def _process_source_for_album(
         self,
@@ -933,6 +974,7 @@ class MetaImportPlugin(BeetsPlugin):
             album,
             album_info,
             result.source,
+            context,
             context.dry_run,
         )
 
@@ -942,6 +984,7 @@ class MetaImportPlugin(BeetsPlugin):
                 item,
                 track_info,
                 result.source,
+                context,
                 context.dry_run,
             )
             if changes:
@@ -963,15 +1006,20 @@ class MetaImportPlugin(BeetsPlugin):
         album: Album,
         album_info: autotag_hooks.AlbumInfo,
         source_key: str,
+        context: MetaImportContext,
         dry_run: bool,
     ) -> Dict[str, Tuple[object, object]]:
         changes: Dict[str, Tuple[object, object]] = {}
 
-        for field, value in album_info.items():
+        for field, value in self._album_field_items(album_info):
             if value is None:
                 continue
 
             current = album.get(field)
+            if not self._should_apply_field(
+                field, current, source_key, context, is_album=True
+            ):
+                continue
             if current == value:
                 continue
             changes[field] = (current, value)
@@ -985,15 +1033,20 @@ class MetaImportPlugin(BeetsPlugin):
         item: Item,
         track_info: autotag_hooks.TrackInfo,
         source_key: str,
+        context: MetaImportContext,
         dry_run: bool,
     ) -> Dict[str, Tuple[object, object]]:
         changes: Dict[str, Tuple[object, object]] = {}
 
-        for field, value in track_info.items():
+        for field, value in self._track_field_items(track_info):
             if value is None:
                 continue
 
             current = item.get(field)
+            if not self._should_apply_field(
+                field, current, source_key, context, is_album=False
+            ):
+                continue
             if current == value:
                 continue
             changes[field] = (current, value)
@@ -1001,6 +1054,85 @@ class MetaImportPlugin(BeetsPlugin):
                 item[field] = value
 
         return changes
+
+    def _album_field_items(
+        self, album_info: autotag_hooks.AlbumInfo
+    ) -> Iterator[Tuple[str, Any]]:
+        yield from album_info.item_data.items()
+        for field in ALBUM_PASSTHROUGH_FIELDS:
+            if field in album_info:
+                yield field, album_info[field]
+
+    def _track_field_items(
+        self, track_info: autotag_hooks.TrackInfo
+    ) -> Iterator[Tuple[str, Any]]:
+        yield from track_info.item_data.items()
+        for field in TRACK_PASSTHROUGH_FIELDS:
+            if field in track_info:
+                yield field, track_info[field]
+
+    def _should_apply_field(
+        self,
+        field: str,
+        current: Any,
+        source_key: str,
+        context: MetaImportContext,
+        *,
+        is_album: bool,
+    ) -> bool:
+        if self._field_is_excluded(field, source_key, context, is_album=is_album):
+            return False
+
+        if self._is_musicbrainz_mb_field(field, source_key):
+            return True
+
+        if self._is_primary_source(source_key, context):
+            return True
+
+        if self._is_provider_specific_field(field, source_key):
+            return True
+
+        return self._is_missing_value(current)
+
+    def _field_is_excluded(
+        self,
+        field: str,
+        source_key: str,
+        context: MetaImportContext,
+        *,
+        is_album: bool,
+    ) -> bool:
+        provider_settings = context.provider_settings.get(source_key, {})
+        excluded_key = "exclude_album_fields" if is_album else "exclude_track_fields"
+        excluded = provider_settings.get(excluded_key, set())
+        return field in excluded
+
+    def _is_primary_source(
+        self, source_key: str, context: MetaImportContext
+    ) -> bool:
+        return source_key == context.primary_source
+
+    @staticmethod
+    def _is_missing_value(value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value == ""
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return len(value) == 0
+        return False
+
+    def _is_musicbrainz_mb_field(self, field: str, source_key: str) -> bool:
+        return source_key == "musicbrainz" and field.startswith("mb_")
+
+    def _is_provider_specific_field(self, field: str, source_key: str) -> bool:
+        return any(field.startswith(prefix) for prefix in self._field_prefixes(source_key))
+
+    def _field_prefixes(self, source_key: str) -> Tuple[str, ...]:
+        overrides = PREFIX_OVERRIDES.get(source_key)
+        if overrides:
+            return overrides
+        return (f"{source_key}_",)
 
     def _current_source_id(self, album: Album, source_key: str) -> Optional[str]:
         for field in ID_FIELD_OVERRIDES.get(
