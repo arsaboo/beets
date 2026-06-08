@@ -93,6 +93,12 @@ New features
   editing an album import. Fields that appear in both ``itemfields`` and
   ``albumfields`` are shown only in the header, not per-track.
 
+- :ref:`tunique` (``%tunique{}``): New path template function to disambiguate
+  tracks within the same album that share the same title (e.g., identical-titled
+  tracks on different discs). It has the same arguments as :ref:`%aunique
+  <aunique>`; the default identifiers are ``title`` and the default
+  disambiguators are ``track disc artist``.
+
 Bug fixes
 ~~~~~~~~~
 
