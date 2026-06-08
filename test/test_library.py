@@ -936,10 +936,9 @@ class TestTrackDisambiguation(TestHelper, PathFormattingMixin):
 
     def test_tunique_with_default_arguments_uses_track(self, items):
         i1, i2 = items
-        i2.track = 11
-        i2.store()
         self._setf("$title%tunique{}")
         self._assert_dest(b"/base/Common Title [07]", i1)
+        self._assert_dest(b"/base/Common Title [11]", i2)
 
     def test_tunique_expands_to_nothing_for_unique_titles(self, items):
         i1, i2 = items
@@ -989,6 +988,7 @@ class TestTrackDisambiguation(TestHelper, PathFormattingMixin):
 
         self._setf("$title%tunique{title,track disc}")
         self._assert_dest(b"/base/Common Title [01]", i1)
+        self._assert_dest(b"/base/Common Title [02]", i2)
 
     def test_tunique_expands_to_disambiguating_disc(self, items):
         i1, i2 = items

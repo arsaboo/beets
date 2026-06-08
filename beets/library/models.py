@@ -1434,7 +1434,7 @@ class DefaultTemplateFunctions:
 
     def tmpl_tunique(self, keys=None, disam=None, bracket=None):
         """Generate a string that is guaranteed to be unique among all
-        items in the same album who share the same set of keys.
+        items in the same album that share the same set of keys.
 
         A field from "disam" is used in the string if one is sufficient to
         disambiguate the tracks. Otherwise, a fallback opaque value is
@@ -1460,7 +1460,7 @@ class DefaultTemplateFunctions:
             return ""
 
         resolved_keys = keys or beets.config["tunique"]["keys"].as_str()
-        key_fields = resolved_keys.split()
+        key_fields = resolved_keys.split() or ["title"]
         query = dbcore.AndQuery(
             [dbcore.MatchQuery(f, self.item.get(f)) for f in key_fields]
             + [dbcore.MatchQuery("album_id", album_id)]
@@ -1543,7 +1543,7 @@ class DefaultTemplateFunctions:
         # Find matching items to disambiguate with.
         if query is None:
             query = db_item.duplicates_query(keys)
-        ambigous_items = (
+        ambiguous_items = (
             self.lib.items(query)
             if isinstance(db_item, Item)
             else self.lib.albums(query)
@@ -1551,19 +1551,19 @@ class DefaultTemplateFunctions:
 
         # If there's only one item to matching these details, then do
         # nothing.
-        if len(ambigous_items) == 1:
+        if len(ambiguous_items) == 1:
             self.lib._memotable[memokey] = ""
             return ""
 
         # Find the first disambiguator that distinguishes the items.
         for disambiguator in disam:
             # Get the value for each item for the current field.
-            disam_values = {s.get(disambiguator, "") for s in ambigous_items}
+            disam_values = {s.get(disambiguator, "") for s in ambiguous_items}
 
             # If the set of unique values is equal to the number of
             # items in the disambiguation set, we're done -- this is
             # sufficient disambiguation.
-            if len(disam_values) == len(ambigous_items):
+            if len(disam_values) == len(ambiguous_items):
                 break
         else:
             # No disambiguator distinguished all fields.
