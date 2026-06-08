@@ -1462,10 +1462,7 @@ class DefaultTemplateFunctions:
         resolved_keys = keys or beets.config["tunique"]["keys"].as_str()
         key_fields = resolved_keys.split()
         query = dbcore.AndQuery(
-            [
-                dbcore.MatchQuery(f, self.item.get(f))
-                for f in key_fields
-            ]
+            [dbcore.MatchQuery(f, self.item.get(f)) for f in key_fields]
             + [dbcore.MatchQuery("album_id", album_id)]
         )
 
