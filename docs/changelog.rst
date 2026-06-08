@@ -12,6 +12,11 @@ Unreleased
 New features
 ~~~~~~~~~~~~
 
+- :ref:`tunique` (``%tunique{}``): New path template function to disambiguate
+  tracks within the same album that share the same title (e.g., identical-titled
+  tracks on different discs). It has the same arguments as :ref:`%aunique
+  <aunique>`; the default identifiers are ``title`` and the default
+  disambiguators are ``track disc artist``.
 - :doc:`plugins/convert`: The ``--force`` and ``--keep-new`` CLI flags are now
   also available as config options via ``force`` and ``keep_new``.
 - :ref:`import-cmd`: The ``--nomove`` / ``-M`` CLI flag can now be used to
