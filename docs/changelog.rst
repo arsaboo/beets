@@ -27,6 +27,10 @@ New features
   :conf:`plugins.musicbrainz:aliases_as_credits` to make
   aliases-as-artist-credit optional.
 - :doc:`plugins/badfiles`: Added settings for auto error and warning actions.
+- :doc:`plugins/edit`: The interactive import editor now shows album-level
+  fields (as configured by ``albumfields``) as a YAML header section when
+  editing an album import. Fields that appear in both ``itemfields`` and
+  ``albumfields`` are shown only in the header, not per-track.
 
 Bug fixes
 ~~~~~~~~~
