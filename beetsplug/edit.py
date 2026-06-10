@@ -282,9 +282,7 @@ class EditPlugin(plugins.BeetsPlugin):
                 ui.print_("No changes to apply.")
                 return False
 
-            choice = ui.input_options(
-                ("continue Editing", "apply", "cancel")
-            )
+            choice = ui.input_options(("continue Editing", "apply", "cancel"))
             if choice == "a":  # Apply.
                 return True
             if choice == "c":  # Cancel.
@@ -384,7 +382,9 @@ class EditPlugin(plugins.BeetsPlugin):
         """
         ignore_fields = set(self.config["ignore_fields"].as_str_seq())
         changed = False
-        for old_doc, new_doc, item in zip(old_track_data, new_track_data, items):
+        for old_doc, new_doc, item in zip(
+            old_track_data, new_track_data, items
+        ):
             forbidden = False
             for key in ignore_fields:
                 if old_doc.get(key) != new_doc.get(key):
@@ -481,9 +481,7 @@ class EditPlugin(plugins.BeetsPlugin):
                 self._importer_edit_cleanup(task)
                 return None
 
-            choice = ui.input_options(
-                ("continue Editing", "apply", "cancel")
-            )
+            choice = ui.input_options(("continue Editing", "apply", "cancel"))
             if choice == "a":  # Apply.
                 self._importer_edit_cleanup(task)
                 return Action.RETAG

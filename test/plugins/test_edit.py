@@ -392,9 +392,12 @@ class EditDuringImporterNonSingletonTest(EditDuringImporterTestCase):
             ["d", "a"],
         )
 
-        assert all("Modified Artist" in i.albumartist for i in self.lib.items()
-                   ) or all(i.albumartist is None and "Tag Artist" in i.artist
-                            for i in self.lib.items())
+        assert all(
+            "Modified Artist" in i.albumartist for i in self.lib.items()
+        ) or all(
+            i.albumartist is None and "Tag Artist" in i.artist
+            for i in self.lib.items()
+        )
 
     def test_edit_apply_asis(self):
         """Edit the album field for all items in the library, apply changes,
