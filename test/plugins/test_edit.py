@@ -393,7 +393,8 @@ class EditDuringImporterNonSingletonTest(EditDuringImporterTestCase):
         )
 
         assert all(
-            "Modified Artist" in i.albumartist for i in self.lib.items()
+            i.albumartist is not None and "Modified Artist" in i.albumartist
+            for i in self.lib.items()
         ) or all(
             i.albumartist is None and "Tag Artist" in i.artist
             for i in self.lib.items()

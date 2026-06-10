@@ -224,8 +224,8 @@ class EditPlugin(plugins.BeetsPlugin):
         """Open a temporary file with `old_str`, let the user edit it, and
         return the parsed list of YAML documents.
 
-        Returns ``None`` if the user aborted (no changes or unresolvable
-        parse error).
+        Returns ``(parsed_data, edited_str)`` on success, or ``None`` if the
+        user aborted (no changes or unresolvable parse error).
         """
         new = NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False, encoding="utf-8"
@@ -244,7 +244,7 @@ class EditPlugin(plugins.BeetsPlugin):
                     return None
 
                 try:
-                    return load(new_str)
+                    return load(new_str), new_str
                 except ParseError as e:
                     ui.print_(f"Could not read data: {e}")
                     if not ui.input_yn("Edit again to fix? (Y/n)", True):
@@ -259,12 +259,13 @@ class EditPlugin(plugins.BeetsPlugin):
         Return a boolean indicating whether the edit succeeded.
         """
         old_data = [flatten(o, fields) for o in objs]
-        old_str = dump(old_data)
+        cur_str = dump(old_data)
 
         while True:
-            new_data = self._edit_yaml(old_str)
-            if new_data is None:
+            result = self._edit_yaml(cur_str)
+            if result is None:
                 return False
+            new_data, new_str = result
 
             if len(old_data) != len(new_data):
                 self._log.warning(
@@ -290,6 +291,7 @@ class EditPlugin(plugins.BeetsPlugin):
                 return False
             if choice == "e":  # Keep editing.
                 self.apply_data(objs, new_data, old_data)
+                cur_str = new_str
                 continue
 
     def apply_data(self, objs, old_data, new_data):
@@ -362,7 +364,7 @@ class EditPlugin(plugins.BeetsPlugin):
 
         first_item = task.items[0]
         header = flatten(first_item, album_fields)
-        return {k: v for k, v in header.items() if k in album_fields}
+        return header if header else None
 
     def _importer_edit_apply_header(self, items, header_data):
         """Apply album-header changes (from ``_importer_edit_album_header``)
@@ -433,16 +435,17 @@ class EditPlugin(plugins.BeetsPlugin):
         if header_data is not None:
             all_old_data.append(header_data)
         all_old_data.extend(old_track_data)
-        old_str = dump(all_old_data)
-
         has_header = header_data is not None
         num_data_docs = 1 if has_header else 0
 
+        cur_str = dump(all_old_data)
+
         while True:
-            new_all_data = self._edit_yaml(old_str)
-            if new_all_data is None:
+            result = self._edit_yaml(cur_str)
+            if result is None:
                 self._importer_edit_cleanup(task)
                 return None
+            new_all_data, new_str = result
 
             expected_total = num_data_docs + len(task.items)
             if len(new_all_data) != expected_total:
@@ -491,6 +494,7 @@ class EditPlugin(plugins.BeetsPlugin):
                 return None
             if choice == "e":  # Keep editing.
                 self._importer_edit_restore_from_copies(task, objs_old)
+                cur_str = new_str
                 continue
 
     @staticmethod
