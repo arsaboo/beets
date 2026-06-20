@@ -88,6 +88,11 @@ New features
   data_source:tidal tidal_album_id='$mb_albumid' -a`` for albums and ``beet
   modify data_source:tidal tidal_track_id='$mb_trackid'`` for items.
 
+- :doc:`plugins/edit`: The interactive import editor now shows album-level
+  fields (as configured by ``albumfields``) as a YAML header section when
+  editing an album import. Fields that appear in both ``itemfields`` and
+  ``albumfields`` are shown only in the header, not per-track.
+
 Bug fixes
 ~~~~~~~~~
 
