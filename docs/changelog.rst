@@ -39,6 +39,11 @@ New features
   the local filesystem when the user (or ``quiet_fallback``) chooses ``asis``.
 - :doc:`plugins/lyrics`: Added a ``--no-keep-synced`` command option to override
   ``keep_synced: yes`` for a single manual lyrics fetch.
+- :ref:`tunique` (``%tunique{}``): New path template function to disambiguate
+  tracks within the same album that share the same title (e.g., identical-titled
+  tracks on different discs). It has the same arguments as :ref:`%aunique
+  <aunique>`; the default identifiers are ``title`` and the default
+  disambiguators are ``track disc artist``.
 
 Bug fixes
 ~~~~~~~~~
