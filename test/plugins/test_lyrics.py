@@ -402,7 +402,11 @@ class LyricsBackendTest(LyricsPluginMixin):
 class TestLyricsSources(LyricsBackendTest):
     @pytest.fixture(scope="class")
     def plugin_config(self):
-        return {"google_API_key": "test", "synced": True}
+        return {
+            "google_API_key": "test",
+            "lrcmux": {"sources": ["ytmusic"]},
+            "synced": True,
+        }
 
     @pytest.fixture(
         params=[pytest.param(lp, marks=lp.marks) for lp in lyrics_pages],
@@ -679,6 +683,58 @@ class TestLRCLibLyrics(LyricsBackendTest):
         else:
             assert lyrics
             assert lyrics.text == expected_lyrics
+
+
+class TestLRCMuxLyrics(LyricsBackendTest):
+    SYNCED = "[00:00.00] synced"
+    PLAIN = "plain"
+
+    @pytest.fixture(scope="class")
+    def backend_name(self):
+        return "lrcmux"
+
+    @pytest.mark.parametrize(
+        "plugin_config, mocked_text, expected_format, expected_level",
+        [
+            pytest.param({"synced": True}, SYNCED, "lrc", "line", id="synced"),
+            pytest.param({"synced": False}, PLAIN, "txt", "none", id="plain"),
+            pytest.param(
+                {"synced": True, "lrcmux": {"sources": ["ytmusic"]}},
+                SYNCED,
+                "lrc",
+                "line",
+                id="synced-sources",
+            ),
+        ],
+    )
+    def test_fetch_lyrics(
+        self,
+        backend,
+        requests_mock,
+        mocked_text,
+        expected_format,
+        expected_level,
+        plugin_config,
+    ):
+        requests_mock.get(backend.url, text=mocked_text)
+        result = backend.fetch("la", "la", "la", 0)
+        assert result
+        assert result.text == mocked_text
+        assert result.backend == "lrcmux"
+        assert f"format={expected_format}" in result.url
+        assert f"level={expected_level}" in result.url
+        if sources := (plugin_config.get("lrcmux") or {}).get("sources"):
+            assert f"sources={','.join(sources)}" in result.url
+
+    @pytest.mark.parametrize("plugin_config", [{}])
+    def test_not_found(self, backend, requests_mock):
+        requests_mock.get(backend.url, status_code=HTTPStatus.NOT_FOUND)
+        assert backend.fetch("la", "la", "", 0) is None
+
+    @pytest.mark.parametrize("plugin_config", [{}])
+    def test_empty_response(self, backend, requests_mock):
+        requests_mock.get(backend.url, text="")
+        assert backend.fetch("la", "la", "", 0) is None
 
 
 @pytest.mark.requires_import("langdetect")

@@ -44,6 +44,8 @@ New features
   tracks on different discs). It has the same arguments as :ref:`%aunique
   <aunique>`; the default identifiers are ``title`` and the default
   disambiguators are ``track disc artist``.
+- :doc:`plugins/lyrics`: Add ``lrcmux`` backend, which aggregates lyrics from
+  various other sources.
 
 Bug fixes
 ~~~~~~~~~
